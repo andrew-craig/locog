@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  logservice:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ../web/static:/app/web/static:ro
+    command: ["-db", "/data/logs.db", "-addr", ":8080"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  vector:
+    image: timberio/vector:0.35.0-alpine
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./vector.toml:/etc/vector/vector.toml:ro
+      - vector-data:/var/lib/vector
+    depends_on:
+      - logservice
+    restart: unless-stopped
+
+volumes:
+  vector-data:
