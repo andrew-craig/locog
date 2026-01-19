@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Locog - Log Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #2d2d30;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        .filters {
+            background: #252526;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.875rem;
+            color: #969696;
+        }
+
+        select, input {
+            background: #3c3c3c;
+            border: 1px solid #3e3e42;
+            color: #d4d4d4;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        button:active {
+            background: #007acc;
+        }
+
+        .logs-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 2rem;
+        }
+
+        .log-entry {
+            margin-bottom: 0.5rem;
+            padding: 0.75rem;
+            background: #252526;
+            border-left: 3px solid #3e3e42;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.875rem;
+        }
+
+        .log-entry.error {
+            border-left-color: #f48771;
+            background: #2d2424;
+        }
+
+        .log-entry.warn {
+            border-left-color: #cca700;
+            background: #2d2a24;
+        }
+
+        .log-entry.info {
+            border-left-color: #4ec9b0;
+        }
+
+        .log-entry.debug {
+            border-left-color: #608b4e;
+        }
+
+        .log-header {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .log-timestamp {
+            color: #858585;
+        }
+
+        .log-service {
+            color: #4ec9b0;
+        }
+
+        .log-level {
+            font-weight: bold;
+        }
+
+        .log-level.ERROR {
+            color: #f48771;
+        }
+
+        .log-level.WARN {
+            color: #cca700;
+        }
+
+        .log-level.INFO {
+            color: #4fc1ff;
+        }
+
+        .log-level.DEBUG {
+            color: #608b4e;
+        }
+
+        .log-host {
+            color: #9cdcfe;
+        }
+
+        .log-message {
+            color: #d4d4d4;
+            word-wrap: break-word;
+        }
+
+        .log-metadata {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #3e3e42;
+            font-size: 0.75rem;
+            color: #858585;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #858585;
+        }
+
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Locog - Lightweight Log Viewer</h1>
+    </header>
+
+    <div class="filters">
+        <div class="filter-group">
+            <label for="service">Service:</label>
+            <select id="service">
+                <option value="">All</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="level">Level:</label>
+            <select id="level">
+                <option value="">All</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="host">Host:</label>
+            <select id="host">
+                <option value="">All</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="search">Search:</label>
+            <input type="text" id="search" placeholder="Search in messages...">
+        </div>
+
+        <div class="filter-group">
+            <label for="limit">Limit:</label>
+            <select id="limit">
+                <option value="100">100</option>
+                <option value="500" selected>500</option>
+                <option value="1000">1000</option>
+                <option value="5000">5000</option>
+            </select>
+        </div>
+
+        <button onclick="loadLogs()">Refresh</button>
+
+        <div class="auto-refresh">
+            <input type="checkbox" id="autoRefresh">
+            <label for="autoRefresh">Auto-refresh (10s)</label>
+        </div>
+    </div>
+
+    <div class="logs-container" id="logsContainer">
+        <div class="loading">Loading logs...</div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
