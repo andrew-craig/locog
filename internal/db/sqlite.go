@@ -181,6 +181,10 @@ func (db *DB) QueryLogs(filter models.LogFilter) ([]models.Log, error) {
 		logs = append(logs, log)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return logs, nil
 }
 
@@ -258,6 +262,11 @@ func (db *DB) getDistinctValues(column string) ([]string, error) {
 		}
 		values = append(values, val)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return values, nil
 }
 

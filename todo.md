@@ -4,23 +4,9 @@ Issues identified during code review, prioritized for future implementation.
 
 ## Medium Priority
 
-### 13. No Rate Limiting
-**Problem:** Ingestion endpoint has no rate limiting, susceptible to abuse.
-**Solution:** Add rate limiting middleware (e.g., `golang.org/x/time/rate`).
-
-### 15. Filter Options Query Could Be Slow
-**Problem:** `GetFilterOptions()` runs 3 separate `SELECT DISTINCT` queries that become expensive as table grows.
-**Solution:** Cache results with TTL, or combine into single query.
-
-### 16. No Limit on Filter Options (`sqlite.go:198-215`)
-**Problem:** Thousands of unique services/hosts would make dropdowns unusable.
-**Solution:** Add `LIMIT 100` to distinct queries.
 
 ## Low Priority / Code Quality
 
-### 17. Inconsistent Error Handling Pattern
-**Problem:** Some handlers log errors before returning, others don't.
-**Solution:** Standardize: always log server errors, never log client errors.
 
 ### 18. No Context Propagation
 **Problem:** Database operations don't accept `context.Context`.
@@ -29,14 +15,6 @@ Issues identified during code review, prioritized for future implementation.
 func (db *DB) QueryLogs(ctx context.Context, filter LogFilter) ([]Log, error)
 ```
 
-### 19. Missing HTTP Method Check on Read Endpoints
-**Problem:** `handleQueryLogs` and `handleGetFilters` accept any HTTP method.
-**Solution:** Add `if r.Method != http.MethodGet` check.
-
-### 20. Defer After Error Check (`main.go:65-66`)
-**Problem:** `defer r.Body.Close()` is placed after reading the body.
-**Solution:** Move defer before `io.ReadAll()` (minor, as MaxBytesReader wraps it).
-
 ### 21. No Tests
 **Problem:** No unit or integration tests exist.
 **Solution:** Add tests for:
@@ -44,10 +22,6 @@ func (db *DB) QueryLogs(ctx context.Context, filter LogFilter) ([]Log, error)
 - Batch insertion
 - Query filtering
 - API endpoints (httptest)
-
-### 22. `rows.Err()` Not Checked (`sqlite.go:165-168`)
-**Problem:** After iterating `rows.Next()`, `rows.Err()` should be checked.
-**Solution:** Add `if err := rows.Err(); err != nil { return nil, err }` before return.
 
 ## Architecture Suggestions
 

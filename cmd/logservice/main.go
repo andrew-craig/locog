@@ -223,6 +223,11 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	filter := models.LogFilter{
 		Service: r.URL.Query().Get("service"),
 		Level:   r.URL.Query().Get("level"),
@@ -260,6 +265,11 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	options, err := s.db.GetFilterOptions()
 	if err != nil {
 		log.Printf("Failed to get filter options: %v", err)
