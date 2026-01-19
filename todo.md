@@ -8,13 +8,6 @@ Issues identified during code review, prioritized for future implementation.
 ## Low Priority / Code Quality
 
 
-### 18. No Context Propagation
-**Problem:** Database operations don't accept `context.Context`.
-**Solution:** Add context parameter to all DB methods for cancellation and timeouts:
-```go
-func (db *DB) QueryLogs(ctx context.Context, filter LogFilter) ([]Log, error)
-```
-
 ### 21. No Tests
 **Problem:** No unit or integration tests exist.
 **Solution:** Add tests for:
@@ -45,15 +38,6 @@ func (db *DB) QueryLogs(ctx context.Context, filter LogFilter) ([]Log, error)
 **Solution:** Add WebSocket endpoint for streaming new logs to connected clients.
 
 ## Deployment Issues
-
-### 27. Docker Compose `depends_on` Doesn't Wait for Health
-**Problem:** `depends_on: [logservice]` only waits for container start, not healthcheck.
-**Solution:** Update `docker-compose.yml`:
-```yaml
-depends_on:
-  logservice:
-    condition: service_healthy
-```
 
 ### 28. Volume Permissions
 **Problem:** `./data` volume may have permission issues depending on host OS.

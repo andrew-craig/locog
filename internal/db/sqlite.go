@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -63,7 +64,7 @@ func initSchema(conn *sql.DB) error {
 	return err
 }
 
-func (db *DB) InsertLog(log *models.Log) error {
+func (db *DB) InsertLog(ctx context.Context, log *models.Log) error {
 	var metadataJSON []byte
 	if log.Metadata != nil {
 		var err error
@@ -73,7 +74,7 @@ func (db *DB) InsertLog(log *models.Log) error {
 		}
 	}
 
-	_, err := db.conn.Exec(`
+	_, err := db.conn.ExecContext(ctx, `
 		INSERT INTO logs (timestamp, service, level, message, metadata, host)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		log.Timestamp, log.Service, log.Level, log.Message, metadataJSON, log.Host,
@@ -81,14 +82,14 @@ func (db *DB) InsertLog(log *models.Log) error {
 	return err
 }
 
-func (db *DB) InsertBatch(logs []models.Log) error {
-	tx, err := db.conn.Begin()
+func (db *DB) InsertBatch(ctx context.Context, logs []models.Log) error {
+	tx, err := db.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`
+	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO logs (timestamp, service, level, message, metadata, host)
 		VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
@@ -108,7 +109,7 @@ func (db *DB) InsertBatch(logs []models.Log) error {
 			}
 		}
 
-		_, err = stmt.Exec(logEntry.Timestamp, logEntry.Service, logEntry.Level,
+		_, err = stmt.ExecContext(ctx, logEntry.Timestamp, logEntry.Service, logEntry.Level,
 			logEntry.Message, metadataJSON, logEntry.Host)
 		if err != nil {
 			return err
@@ -118,7 +119,7 @@ func (db *DB) InsertBatch(logs []models.Log) error {
 	return tx.Commit()
 }
 
-func (db *DB) QueryLogs(filter models.LogFilter) ([]models.Log, error) {
+func (db *DB) QueryLogs(ctx context.Context, filter models.LogFilter) ([]models.Log, error) {
 	query := `SELECT id, timestamp, service, level, message, metadata, host, created_at
               FROM logs WHERE 1=1`
 	args := []interface{}{}
@@ -157,7 +158,7 @@ func (db *DB) QueryLogs(filter models.LogFilter) ([]models.Log, error) {
 	query += " LIMIT ?"
 	args = append(args, limit)
 
-	rows, err := db.conn.Query(query, args...)
+	rows, err := db.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +189,7 @@ func (db *DB) QueryLogs(filter models.LogFilter) ([]models.Log, error) {
 	return logs, nil
 }
 
-func (db *DB) GetFilterOptions() (models.FilterOptions, error) {
+func (db *DB) GetFilterOptions(ctx context.Context) (models.FilterOptions, error) {
 	// Check cache first
 	db.filterCache.mu.RLock()
 	if time.Now().Before(db.filterCache.expires) {
@@ -202,21 +203,21 @@ func (db *DB) GetFilterOptions() (models.FilterOptions, error) {
 	var options models.FilterOptions
 
 	// Get distinct services
-	services, err := db.getDistinctValues("service")
+	services, err := db.getDistinctValues(ctx, "service")
 	if err != nil {
 		return options, err
 	}
 	options.Services = services
 
 	// Get distinct levels
-	levels, err := db.getDistinctValues("level")
+	levels, err := db.getDistinctValues(ctx, "level")
 	if err != nil {
 		return options, err
 	}
 	options.Levels = levels
 
 	// Get distinct hosts
-	hosts, err := db.getDistinctValues("host")
+	hosts, err := db.getDistinctValues(ctx, "host")
 	if err != nil {
 		return options, err
 	}
@@ -239,7 +240,7 @@ var allowedFilterColumns = map[string]bool{
 	"host":    true,
 }
 
-func (db *DB) getDistinctValues(column string) ([]string, error) {
+func (db *DB) getDistinctValues(ctx context.Context, column string) ([]string, error) {
 	// Validate column name against allowlist to prevent SQL injection
 	if !allowedFilterColumns[column] {
 		return nil, fmt.Errorf("invalid column name: %s", column)
@@ -248,7 +249,7 @@ func (db *DB) getDistinctValues(column string) ([]string, error) {
 	// Limit to 100 values to keep dropdowns usable
 	query := fmt.Sprintf("SELECT DISTINCT %s FROM logs WHERE %s IS NOT NULL ORDER BY %s LIMIT 100",
 		column, column, column)
-	rows, err := db.conn.Query(query)
+	rows, err := db.conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -270,9 +271,9 @@ func (db *DB) getDistinctValues(column string) ([]string, error) {
 	return values, nil
 }
 
-func (db *DB) DeleteOldLogs(olderThan time.Duration) (int64, error) {
+func (db *DB) DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-olderThan)
-	result, err := db.conn.Exec("DELETE FROM logs WHERE timestamp < ?", cutoff)
+	result, err := db.conn.ExecContext(ctx, "DELETE FROM logs WHERE timestamp < ?", cutoff)
 	if err != nil {
 		return 0, err
 	}

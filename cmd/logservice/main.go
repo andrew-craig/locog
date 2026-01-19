@@ -206,13 +206,13 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	// Batch insert for better performance
 	if len(logs) > 1 {
-		if err := s.db.InsertBatch(logs); err != nil {
+		if err := s.db.InsertBatch(r.Context(), logs); err != nil {
 			log.Printf("Failed to insert batch: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
 	} else if len(logs) == 1 {
-		if err := s.db.InsertLog(&logs[0]); err != nil {
+		if err := s.db.InsertLog(r.Context(), &logs[0]); err != nil {
 			log.Printf("Failed to insert log: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
@@ -253,7 +253,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.db.QueryLogs(filter)
+	logs, err := s.db.QueryLogs(r.Context(), filter)
 	if err != nil {
 		log.Printf("Query failed: %v", err)
 		http.Error(w, "Query failed", http.StatusInternalServerError)
@@ -270,7 +270,7 @@ func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	options, err := s.db.GetFilterOptions()
+	options, err := s.db.GetFilterOptions(r.Context())
 	if err != nil {
 		log.Printf("Failed to get filter options: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -294,8 +294,12 @@ func (s *server) cleanupRoutine() {
 }
 
 func (s *server) runCleanup() {
+	// Use a timeout context for cleanup operations
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
 	// Delete logs older than 30 days
-	deleted, err := s.db.DeleteOldLogs(30 * 24 * time.Hour)
+	deleted, err := s.db.DeleteOldLogs(ctx, 30*24*time.Hour)
 	if err != nil {
 		log.Printf("Cleanup failed: %v", err)
 	} else if deleted > 0 {

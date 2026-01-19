@@ -1,5 +1,5 @@
 services:
-  logservice:
+  locog:
     build:
       context: ..
       dockerfile: Dockerfile
@@ -23,7 +23,8 @@ services:
       - ./vector.toml:/etc/vector/vector.toml:ro
       - vector-data:/var/lib/vector
     depends_on:
-      - logservice
+      locog:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
