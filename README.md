@@ -21,7 +21,7 @@ A minimal, self-contained log aggregation and viewing solution using SQLite for 
                      ├──> ┌─────────┐      ┌──────────────────┐      ┌─────────┐
 ┌─────────────────┐  │    │ Vector  │─────>│  Log Service     │─────>│ SQLite  │
 │  App (Go)       │──┘    │ (shipper)│      │  (Go binary)     │      │  DB     │
-│  logs to stdout │       └─────────┘      │  :8080           │      └─────────┘
+│  logs to stdout │       └─────────┘      │  :5081           │      └─────────┘
 └─────────────────┘                        └──────────────────┘
                                                    │
                                                    ▼
@@ -41,7 +41,7 @@ cd deployments
 docker-compose up -d
 ```
 
-2. Access the web UI at `http://localhost:8080`
+2. Access the web UI at `http://localhost:5081`
 
 ### Building from Source
 
@@ -52,16 +52,16 @@ go build -o logservice ./cmd/logservice
 
 2. Run the service:
 ```bash
-./logservice -db logs.db -addr :8080
+./logservice -db logs.db -addr :5081
 ```
 
-3. Access the web UI at `http://localhost:8080`
+3. Access the web UI at `http://localhost:5081`
 
 ## Usage
 
 ### Accessing the Web UI
 
-Open your browser to `http://localhost:8080`
+Open your browser to `http://localhost:5081`
 
 The web UI provides:
 - Filter logs by service, level, and host
@@ -73,7 +73,7 @@ The web UI provides:
 ### Manual Log Ingestion (for testing)
 
 ```bash
-curl -X POST http://localhost:8080/api/ingest \
+curl -X POST http://localhost:5081/api/ingest \
   -H "Content-Type: application/json" \
   -d '{
     "timestamp": "2025-01-19T10:30:00Z",
@@ -87,7 +87,7 @@ curl -X POST http://localhost:8080/api/ingest \
 
 Batch ingestion:
 ```bash
-curl -X POST http://localhost:8080/api/ingest \
+curl -X POST http://localhost:5081/api/ingest \
   -H "Content-Type: application/json" \
   -d '[
     {"service": "api", "level": "INFO", "message": "Request received", "host": "web-1"},
@@ -99,17 +99,17 @@ curl -X POST http://localhost:8080/api/ingest \
 
 Get latest 100 ERROR logs from api-service:
 ```bash
-curl "http://localhost:8080/api/logs?service=api-service&level=ERROR&limit=100"
+curl "http://localhost:5081/api/logs?service=api-service&level=ERROR&limit=100"
 ```
 
 Search for "database" in messages:
 ```bash
-curl "http://localhost:8080/api/logs?search=database"
+curl "http://localhost:5081/api/logs?search=database"
 ```
 
 Get logs from specific time range:
 ```bash
-curl "http://localhost:8080/api/logs?start=2025-01-19T00:00:00Z&end=2025-01-19T23:59:59Z"
+curl "http://localhost:5081/api/logs?start=2025-01-19T00:00:00Z&end=2025-01-19T23:59:59Z"
 ```
 
 ## Application Integration
@@ -188,7 +188,7 @@ logger.Info("user logged in",
 
 Command-line flags:
 - `-db`: Path to SQLite database (default: `logs.db`)
-- `-addr`: HTTP service address (default: `:8080`)
+- `-addr`: HTTP service address (default: `:5081`)
 
 Example:
 ```bash
@@ -236,7 +236,7 @@ cp logs.db logs-backup.db
 
 Check service health:
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:5081/health
 ```
 
 Monitor Vector:

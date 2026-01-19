@@ -13,7 +13,7 @@ Locog is a lightweight log aggregation system written in Go. It provides log ing
 go build -o logservice ./cmd/logservice
 
 # Run locally
-./logservice -db /tmp/logs.db -addr :8080
+./logservice -db /tmp/logs.db -addr :5081
 
 # Run tests
 go test ./...
@@ -92,7 +92,7 @@ The service automatically deletes logs older than 30 days via a daily cleanup ro
 
 ```bash
 # Ingest a test log
-curl -X POST http://localhost:8080/api/ingest \
+curl -X POST http://localhost:5081/api/ingest \
   -H "Content-Type: application/json" \
   -d '{
     "timestamp": "2025-01-19T10:30:00Z",
@@ -104,8 +104,8 @@ curl -X POST http://localhost:8080/api/ingest \
   }'
 
 # Query logs
-curl "http://localhost:8080/api/logs?service=api-service&level=ERROR&limit=100"
-curl "http://localhost:8080/api/logs?search=database"
+curl "http://localhost:5081/api/logs?service=api-service&level=ERROR&limit=100"
+curl "http://localhost:5081/api/logs?search=database"
 ```
 
 ## Performance Characteristics

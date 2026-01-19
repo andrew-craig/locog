@@ -15,5 +15,5 @@ WORKDIR /app
 COPY --from=builder /app/logservice .
 COPY web/static ./web/static
 
-EXPOSE 8080
+EXPOSE 5081
 ENTRYPOINT ["./logservice"]

@@ -19,9 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/time/rate"
 	"locog/internal/db"
 	"locog/internal/models"
+
+	"golang.org/x/time/rate"
 )
 
 //go:embed static/*
@@ -75,7 +76,7 @@ func getClientIP(r *http.Request) string {
 
 func main() {
 	dbPath := flag.String("db", "logs.db", "Path to SQLite database")
-	addr := flag.String("addr", ":8080", "HTTP service address")
+	addr := flag.String("addr", ":5081", "HTTP service address")
 	flag.Parse()
 
 	// Initialize structured JSON logger

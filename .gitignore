@@ -32,4 +32,4 @@ go.work.sum
 # .vscode/
 
 # Runtime data
-deployments/data/
+deployments/data

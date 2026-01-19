@@ -52,7 +52,7 @@ source = '''
 [sinks.log_collector]
 type = "http"
 inputs = ["parse_and_enrich"]
-uri = "http://logservice:8080/api/ingest"
+uri = "http://locog:5081/api/ingest"
 encoding.codec = "json"
 
 # Batch settings for better performance
