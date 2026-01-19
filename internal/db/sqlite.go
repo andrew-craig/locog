@@ -2,15 +2,18 @@ package db
 
 import (
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"locog/internal/models"
 )
+
+//go:embed schema.sql
+var schema string
 
 type DB struct {
 	conn *sql.DB
@@ -45,12 +48,7 @@ func New(dbPath string) (*DB, error) {
 }
 
 func initSchema(conn *sql.DB) error {
-	schema, err := os.ReadFile("schema.sql")
-	if err != nil {
-		return fmt.Errorf("failed to read schema: %w", err)
-	}
-
-	_, err = conn.Exec(string(schema))
+	_, err := conn.Exec(schema)
 	return err
 }
 

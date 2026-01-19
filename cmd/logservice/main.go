@@ -1,61 +1,110 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"locog/internal/db"
 	"locog/internal/models"
 )
 
-var database *db.DB
+// server holds the application dependencies
+type server struct {
+	db *db.DB
+}
 
 func main() {
 	dbPath := flag.String("db", "logs.db", "Path to SQLite database")
 	addr := flag.String("addr", ":8080", "HTTP service address")
 	flag.Parse()
 
-	var err error
-	database, err = db.New(*dbPath)
+	database, err := db.New(*dbPath)
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
 	defer database.Close()
 
+	srv := &server{db: database}
+
 	// Start cleanup routine (runs daily)
-	go cleanupRoutine()
+	go srv.cleanupRoutine()
+
+	mux := http.NewServeMux()
 
 	// Ingestion endpoint (used by Vector)
-	http.HandleFunc("/api/ingest", handleIngest)
+	mux.HandleFunc("/api/ingest", srv.handleIngest)
 
 	// Query endpoints (used by Web UI)
-	http.HandleFunc("/api/logs", handleQueryLogs)
-	http.HandleFunc("/api/filters", handleGetFilters)
+	mux.HandleFunc("/api/logs", srv.handleQueryLogs)
+	mux.HandleFunc("/api/filters", srv.handleGetFilters)
 
 	// Health check
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
 	// Serve static files (Web UI)
-	http.Handle("/", http.FileServer(http.Dir("./web/static")))
+	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
+
+	httpServer := &http.Server{
+		Addr:    *addr,
+		Handler: corsMiddleware(mux),
+	}
+
+	// Graceful shutdown
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+
+		log.Println("Shutting down gracefully...")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := httpServer.Shutdown(ctx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		}
+	}()
 
 	log.Printf("Log service starting on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatal("HTTP server error:", err)
+	}
+	log.Println("Server stopped")
+}
+
+// corsMiddleware adds CORS headers to responses
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // maxBodySize is the maximum allowed request body size (10MB)
 const maxBodySize = 10 << 20
 
-func handleIngest(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -103,13 +152,13 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	// Batch insert for better performance
 	if len(logs) > 1 {
-		if err := database.InsertBatch(logs); err != nil {
+		if err := s.db.InsertBatch(logs); err != nil {
 			log.Printf("Failed to insert batch: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
 	} else if len(logs) == 1 {
-		if err := database.InsertLog(&logs[0]); err != nil {
+		if err := s.db.InsertLog(&logs[0]); err != nil {
 			log.Printf("Failed to insert log: %v", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
@@ -119,7 +168,7 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func handleQueryLogs(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	filter := models.LogFilter{
 		Service: r.URL.Query().Get("service"),
 		Level:   r.URL.Query().Get("level"),
@@ -145,7 +194,7 @@ func handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := database.QueryLogs(filter)
+	logs, err := s.db.QueryLogs(filter)
 	if err != nil {
 		log.Printf("Query failed: %v", err)
 		http.Error(w, "Query failed", http.StatusInternalServerError)
@@ -156,8 +205,8 @@ func handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(logs)
 }
 
-func handleGetFilters(w http.ResponseWriter, r *http.Request) {
-	options, err := database.GetFilterOptions()
+func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
+	options, err := s.db.GetFilterOptions()
 	if err != nil {
 		log.Printf("Failed to get filter options: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -168,21 +217,21 @@ func handleGetFilters(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(options)
 }
 
-func cleanupRoutine() {
+func (s *server) cleanupRoutine() {
 	// Run cleanup immediately on startup
-	runCleanup()
+	s.runCleanup()
 
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runCleanup()
+		s.runCleanup()
 	}
 }
 
-func runCleanup() {
+func (s *server) runCleanup() {
 	// Delete logs older than 30 days
-	deleted, err := database.DeleteOldLogs(30 * 24 * time.Hour)
+	deleted, err := s.db.DeleteOldLogs(30 * 24 * time.Hour)
 	if err != nil {
 		log.Printf("Cleanup failed: %v", err)
 	} else if deleted > 0 {
