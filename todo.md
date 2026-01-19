@@ -8,23 +8,8 @@ Issues identified during code review, prioritized for future implementation.
 ## Low Priority / Code Quality
 
 
-### 21. No Tests
-**Problem:** No unit or integration tests exist.
-**Solution:** Add tests for:
-- Log validation
-- Batch insertion
-- Query filtering
-- API endpoints (httptest)
 
 ## Architecture Suggestions
-
-### 23. Consider Embedding Static Files
-**Problem:** Static files require specific directory structure at runtime.
-**Solution:** Use `//go:embed web/static/*` to embed into binary for single-file deployment.
-
-### 24. Add Structured Logging
-**Problem:** `log.Printf` produces unstructured text logs.
-**Solution:** Use `log/slog` (Go 1.21+) for structured JSON logging - fitting for a log viewer.
 
 ### 25. Add Metrics/Observability
 **Problem:** No visibility into service health or performance.

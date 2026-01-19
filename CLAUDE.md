@@ -15,6 +15,13 @@ go build -o logservice ./cmd/logservice
 # Run locally
 ./logservice -db /tmp/logs.db -addr :8080
 
+# Run tests
+go test ./...
+
+# Run tests with coverage
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out
+
 # Build and run with Docker
 cd deployments && docker-compose up -d
 ```
@@ -29,6 +36,11 @@ cd deployments && docker-compose up -d
 - `internal/models/log.go` - Data models (Log, LogFilter, FilterOptions)
 - `web/static/` - Browser-based UI with real-time filtering (vanilla JS, dark theme)
 - `deployments/` - Docker Compose and Vector configuration
+
+**Test Files:**
+- `cmd/logservice/main_test.go` - HTTP handler and utility function tests
+- `internal/db/sqlite_test.go` - Database layer tests (uses in-memory SQLite)
+- `internal/models/log_test.go` - Model JSON serialization tests
 
 **API Endpoints:**
 - `POST /api/ingest` - Accept single or batch log entries

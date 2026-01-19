@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -21,6 +23,9 @@ import (
 	"locog/internal/db"
 	"locog/internal/models"
 )
+
+//go:embed static/*
+var staticFiles embed.FS
 
 // server holds the application dependencies
 type server struct {
@@ -73,9 +78,14 @@ func main() {
 	addr := flag.String("addr", ":8080", "HTTP service address")
 	flag.Parse()
 
+	// Initialize structured JSON logger
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	database, err := db.New(*dbPath)
 	if err != nil {
-		log.Fatal("Failed to initialize database:", err)
+		slog.Error("failed to initialize database", "error", err)
+		os.Exit(1)
 	}
 	defer database.Close()
 
@@ -102,8 +112,13 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	// Serve static files (Web UI)
-	mux.Handle("/", http.FileServer(http.Dir("./web/static")))
+	// Serve embedded static files (Web UI)
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		slog.Error("failed to create static file system", "error", err)
+		os.Exit(1)
+	}
+	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
 	httpServer := &http.Server{
 		Addr:    *addr,
@@ -116,20 +131,21 @@ func main() {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 
-		log.Println("Shutting down gracefully...")
+		slog.Info("shutting down gracefully")
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		if err := httpServer.Shutdown(ctx); err != nil {
-			log.Printf("HTTP server shutdown error: %v", err)
+			slog.Error("http server shutdown error", "error", err)
 		}
 	}()
 
-	log.Printf("Log service starting on %s", *addr)
+	slog.Info("log service starting", "addr", *addr)
 	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatal("HTTP server error:", err)
+		slog.Error("http server error", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Server stopped")
+	slog.Info("server stopped")
 }
 
 // corsMiddleware adds CORS headers to responses
@@ -198,7 +214,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 		// Validate required fields
 		if err := validateLog(&logs[i]); err != nil {
-			log.Printf("Invalid log entry at index %d: %v", i, err)
+			slog.Warn("invalid log entry", "index", i, "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -207,13 +223,13 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// Batch insert for better performance
 	if len(logs) > 1 {
 		if err := s.db.InsertBatch(r.Context(), logs); err != nil {
-			log.Printf("Failed to insert batch: %v", err)
+			slog.Error("failed to insert batch", "error", err, "count", len(logs))
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
 	} else if len(logs) == 1 {
 		if err := s.db.InsertLog(r.Context(), &logs[0]); err != nil {
-			log.Printf("Failed to insert log: %v", err)
+			slog.Error("failed to insert log", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
@@ -255,7 +271,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := s.db.QueryLogs(r.Context(), filter)
 	if err != nil {
-		log.Printf("Query failed: %v", err)
+		slog.Error("query failed", "error", err, "filter", filter)
 		http.Error(w, "Query failed", http.StatusInternalServerError)
 		return
 	}
@@ -272,7 +288,7 @@ func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
 
 	options, err := s.db.GetFilterOptions(r.Context())
 	if err != nil {
-		log.Printf("Failed to get filter options: %v", err)
+		slog.Error("failed to get filter options", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -301,9 +317,9 @@ func (s *server) runCleanup() {
 	// Delete logs older than 30 days
 	deleted, err := s.db.DeleteOldLogs(ctx, 30*24*time.Hour)
 	if err != nil {
-		log.Printf("Cleanup failed: %v", err)
+		slog.Error("cleanup failed", "error", err)
 	} else if deleted > 0 {
-		log.Printf("Cleaned up %d old logs", deleted)
+		slog.Info("cleaned up old logs", "deleted", deleted)
 	}
 }
 
