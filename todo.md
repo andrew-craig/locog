@@ -22,8 +22,3 @@ Issues identified during code review, prioritized for future implementation.
 **Problem:** UI polls every 10 seconds, not truly real-time.
 **Solution:** Add WebSocket endpoint for streaming new logs to connected clients.
 
-## Deployment Issues
-
-### 28. Volume Permissions
-**Problem:** `./data` volume may have permission issues depending on host OS.
-**Solution:** Document required permissions or add init container to set ownership.
