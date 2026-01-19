@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -15,8 +16,18 @@ import (
 //go:embed schema.sql
 var schema string
 
+// filterCache caches filter options with a TTL
+type filterCache struct {
+	mu      sync.RWMutex
+	options models.FilterOptions
+	expires time.Time
+}
+
+const filterCacheTTL = 30 * time.Second
+
 type DB struct {
-	conn *sql.DB
+	conn        *sql.DB
+	filterCache filterCache
 }
 
 func New(dbPath string) (*DB, error) {
@@ -174,6 +185,16 @@ func (db *DB) QueryLogs(filter models.LogFilter) ([]models.Log, error) {
 }
 
 func (db *DB) GetFilterOptions() (models.FilterOptions, error) {
+	// Check cache first
+	db.filterCache.mu.RLock()
+	if time.Now().Before(db.filterCache.expires) {
+		options := db.filterCache.options
+		db.filterCache.mu.RUnlock()
+		return options, nil
+	}
+	db.filterCache.mu.RUnlock()
+
+	// Cache miss or expired - fetch from database
 	var options models.FilterOptions
 
 	// Get distinct services
@@ -197,6 +218,12 @@ func (db *DB) GetFilterOptions() (models.FilterOptions, error) {
 	}
 	options.Hosts = hosts
 
+	// Update cache
+	db.filterCache.mu.Lock()
+	db.filterCache.options = options
+	db.filterCache.expires = time.Now().Add(filterCacheTTL)
+	db.filterCache.mu.Unlock()
+
 	return options, nil
 }
 
@@ -214,7 +241,8 @@ func (db *DB) getDistinctValues(column string) ([]string, error) {
 		return nil, fmt.Errorf("invalid column name: %s", column)
 	}
 
-	query := fmt.Sprintf("SELECT DISTINCT %s FROM logs WHERE %s IS NOT NULL ORDER BY %s",
+	// Limit to 100 values to keep dropdowns usable
+	query := fmt.Sprintf("SELECT DISTINCT %s FROM logs WHERE %s IS NOT NULL ORDER BY %s LIMIT 100",
 		column, column, column)
 	rows, err := db.conn.Query(query)
 	if err != nil {

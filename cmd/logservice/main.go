@@ -7,21 +7,65 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"golang.org/x/time/rate"
 	"locog/internal/db"
 	"locog/internal/models"
 )
 
 // server holds the application dependencies
 type server struct {
-	db *db.DB
+	db      *db.DB
+	limiter *ipRateLimiter
+}
+
+// ipRateLimiter implements per-IP rate limiting
+type ipRateLimiter struct {
+	limiters sync.Map // map[string]*rate.Limiter
+	rate     rate.Limit
+	burst    int
+}
+
+func newIPRateLimiter(r rate.Limit, burst int) *ipRateLimiter {
+	return &ipRateLimiter{
+		rate:  r,
+		burst: burst,
+	}
+}
+
+func (l *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
+	if limiter, exists := l.limiters.Load(ip); exists {
+		return limiter.(*rate.Limiter)
+	}
+	limiter := rate.NewLimiter(l.rate, l.burst)
+	l.limiters.Store(ip, limiter)
+	return limiter
+}
+
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (for proxies)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the list
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+	// Fall back to RemoteAddr
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
 }
 
 func main() {
@@ -35,7 +79,10 @@ func main() {
 	}
 	defer database.Close()
 
-	srv := &server{db: database}
+	// Rate limiter: 100 requests/sec per IP with burst of 100
+	limiter := newIPRateLimiter(rate.Limit(100), 100)
+
+	srv := &server{db: database, limiter: limiter}
 
 	// Start cleanup routine (runs daily)
 	go srv.cleanupRoutine()
@@ -107,6 +154,13 @@ const maxBodySize = 10 << 20
 func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check rate limit
+	ip := getClientIP(r)
+	if !s.limiter.getLimiter(ip).Allow() {
+		http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
 

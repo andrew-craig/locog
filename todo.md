@@ -4,34 +4,6 @@ Issues identified during code review, prioritized for future implementation.
 
 ## Medium Priority
 
-### 9. Hardcoded Schema Path (`sqlite.go:47`)
-**Problem:** `os.ReadFile("schema.sql")` assumes the working directory contains the schema file.
-**Solution:** Use `//go:embed` to embed the schema into the binary.
-
-### 10. No Graceful Shutdown (`main.go:51`)
-**Problem:** `log.Fatal(http.ListenAndServe(...))` doesn't handle SIGTERM/SIGINT gracefully.
-**Solution:** Use `http.Server` with context-based shutdown:
-```go
-srv := &http.Server{Addr: *addr}
-go func() {
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-    <-sigChan
-    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-    defer cancel()
-    srv.Shutdown(ctx)
-}()
-srv.ListenAndServe()
-```
-
-### 11. Global Database Variable (`main.go:17`)
-**Problem:** `var database *db.DB` is global state, making testing difficult.
-**Solution:** Use dependency injection - pass database to handlers via closure or struct.
-
-### 12. Missing CORS Headers
-**Problem:** No CORS configuration; UI won't work if served from different origin.
-**Solution:** Add CORS middleware or headers for API endpoints.
-
 ### 13. No Rate Limiting
 **Problem:** Ingestion endpoint has no rate limiting, susceptible to abuse.
 **Solution:** Add rate limiting middleware (e.g., `golang.org/x/time/rate`).

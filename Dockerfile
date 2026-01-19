@@ -13,7 +13,6 @@ RUN apk --no-cache add ca-certificates sqlite wget
 
 WORKDIR /app
 COPY --from=builder /app/logservice .
-COPY schema.sql .
 COPY web/static ./web/static
 
 EXPOSE 8080
