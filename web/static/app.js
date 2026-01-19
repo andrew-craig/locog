@@ -72,13 +72,13 @@ function displayLogs(logs) {
 
     container.innerHTML = logs.map(log => {
         const timestamp = new Date(log.timestamp).toLocaleString();
-        const levelClass = log.level.toLowerCase();
+        const levelClass = escapeHtml(log.level.toLowerCase());
 
         let metadataHtml = '';
         if (log.metadata && Object.keys(log.metadata).length > 0) {
             metadataHtml = `
                 <div class="log-metadata">
-                    ${JSON.stringify(log.metadata, null, 2)}
+                    ${escapeHtml(JSON.stringify(log.metadata, null, 2))}
                 </div>
             `;
         }
@@ -87,9 +87,9 @@ function displayLogs(logs) {
             <div class="log-entry ${levelClass}">
                 <div class="log-header">
                     <span class="log-timestamp">${timestamp}</span>
-                    <span class="log-service">${log.service}</span>
-                    <span class="log-level ${log.level}">${log.level}</span>
-                    <span class="log-host">${log.host}</span>
+                    <span class="log-service">${escapeHtml(log.service)}</span>
+                    <span class="log-level ${levelClass}">${escapeHtml(log.level)}</span>
+                    <span class="log-host">${escapeHtml(log.host || '')}</span>
                 </div>
                 <div class="log-message">${escapeHtml(log.message)}</div>
                 ${metadataHtml}

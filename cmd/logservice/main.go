@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"locog/internal/db"
@@ -50,19 +52,25 @@ func main() {
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
+// maxBodySize is the maximum allowed request body size (10MB)
+const maxBodySize = 10 << 20
+
 func handleIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Limit request body size to prevent memory exhaustion
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+	defer r.Body.Close()
+
 	// Read the body
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		http.Error(w, "Failed to read body or body too large", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
 
 	// Support both single log and batch
 	var logs []models.Log
@@ -78,10 +86,18 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 		logs = []models.Log{singleLog}
 	}
 
-	// Set timestamp if not provided
+	// Validate and set defaults for each log
 	for i := range logs {
+		// Set timestamp if not provided
 		if logs[i].Timestamp.IsZero() {
 			logs[i].Timestamp = time.Now()
+		}
+
+		// Validate required fields
+		if err := validateLog(&logs[i]); err != nil {
+			log.Printf("Invalid log entry at index %d: %v", i, err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 	}
 
@@ -153,16 +169,36 @@ func handleGetFilters(w http.ResponseWriter, r *http.Request) {
 }
 
 func cleanupRoutine() {
+	// Run cleanup immediately on startup
+	runCleanup()
+
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		// Delete logs older than 30 days
-		deleted, err := database.DeleteOldLogs(30 * 24 * time.Hour)
-		if err != nil {
-			log.Printf("Cleanup failed: %v", err)
-		} else if deleted > 0 {
-			log.Printf("Cleaned up %d old logs", deleted)
-		}
+		runCleanup()
 	}
+}
+
+func runCleanup() {
+	// Delete logs older than 30 days
+	deleted, err := database.DeleteOldLogs(30 * 24 * time.Hour)
+	if err != nil {
+		log.Printf("Cleanup failed: %v", err)
+	} else if deleted > 0 {
+		log.Printf("Cleaned up %d old logs", deleted)
+	}
+}
+
+func validateLog(l *models.Log) error {
+	if strings.TrimSpace(l.Service) == "" {
+		return fmt.Errorf("missing required field: service")
+	}
+	if strings.TrimSpace(l.Level) == "" {
+		return fmt.Errorf("missing required field: level")
+	}
+	if strings.TrimSpace(l.Message) == "" {
+		return fmt.Errorf("missing required field: message")
+	}
+	return nil
 }
