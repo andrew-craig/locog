@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -86,14 +87,20 @@ func (db *DB) InsertBatch(logs []models.Log) error {
 	}
 	defer stmt.Close()
 
-	for _, log := range logs {
+	for _, logEntry := range logs {
 		var metadataJSON []byte
-		if log.Metadata != nil {
-			metadataJSON, _ = json.Marshal(log.Metadata)
+		if logEntry.Metadata != nil {
+			var marshalErr error
+			metadataJSON, marshalErr = json.Marshal(logEntry.Metadata)
+			if marshalErr != nil {
+				log.Printf("Failed to marshal metadata for log (service=%s): %v", logEntry.Service, marshalErr)
+				// Continue with nil metadata rather than failing the entire batch
+				metadataJSON = nil
+			}
 		}
 
-		_, err = stmt.Exec(log.Timestamp, log.Service, log.Level,
-			log.Message, metadataJSON, log.Host)
+		_, err = stmt.Exec(logEntry.Timestamp, logEntry.Service, logEntry.Level,
+			logEntry.Message, metadataJSON, logEntry.Host)
 		if err != nil {
 			return err
 		}
