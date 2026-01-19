@@ -202,7 +202,20 @@ func (db *DB) GetFilterOptions() (models.FilterOptions, error) {
 	return options, nil
 }
 
+// allowedFilterColumns defines the only column names that can be used in getDistinctValues
+// to prevent SQL injection if the function is ever called with user input.
+var allowedFilterColumns = map[string]bool{
+	"service": true,
+	"level":   true,
+	"host":    true,
+}
+
 func (db *DB) getDistinctValues(column string) ([]string, error) {
+	// Validate column name against allowlist to prevent SQL injection
+	if !allowedFilterColumns[column] {
+		return nil, fmt.Errorf("invalid column name: %s", column)
+	}
+
 	query := fmt.Sprintf("SELECT DISTINCT %s FROM logs WHERE %s IS NOT NULL ORDER BY %s",
 		column, column, column)
 	rows, err := db.conn.Query(query)
