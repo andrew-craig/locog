@@ -70,7 +70,7 @@ function displayLogs(logs) {
         return;
     }
 
-    container.innerHTML = logs.map(log => {
+    container.innerHTML = logs.map((log, index) => {
         const timestamp = new Date(log.timestamp).toLocaleString();
         const levelClass = escapeHtml(log.level.toLowerCase());
 
@@ -83,8 +83,46 @@ function displayLogs(logs) {
             `;
         }
 
+        // Build details view with all log fields as key:value pairs
+        const detailsHtml = `
+            <div class="log-details">
+                ${log.id ? `<div class="detail-row">
+                    <div class="detail-key">ID:</div>
+                    <div class="detail-value">${escapeHtml(String(log.id))}</div>
+                </div>` : ''}
+                <div class="detail-row">
+                    <div class="detail-key">Timestamp:</div>
+                    <div class="detail-value">${timestamp}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-key">Service:</div>
+                    <div class="detail-value">${escapeHtml(log.service)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-key">Level:</div>
+                    <div class="detail-value">${escapeHtml(log.level)}</div>
+                </div>
+                ${log.host ? `<div class="detail-row">
+                    <div class="detail-key">Host:</div>
+                    <div class="detail-value">${escapeHtml(log.host)}</div>
+                </div>` : ''}
+                <div class="detail-row">
+                    <div class="detail-key">Message:</div>
+                    <div class="detail-value">${escapeHtml(log.message)}</div>
+                </div>
+                ${log.metadata && Object.keys(log.metadata).length > 0 ? `<div class="detail-row">
+                    <div class="detail-key">Metadata:</div>
+                    <div class="detail-value metadata">${escapeHtml(JSON.stringify(log.metadata, null, 2))}</div>
+                </div>` : ''}
+                ${log.created_at ? `<div class="detail-row">
+                    <div class="detail-key">Created At:</div>
+                    <div class="detail-value">${new Date(log.created_at).toLocaleString()}</div>
+                </div>` : ''}
+            </div>
+        `;
+
         return `
-            <div class="log-entry ${levelClass}">
+            <div class="log-entry ${levelClass}" data-index="${index}">
                 <div class="log-header">
                     <span class="log-timestamp">${timestamp}</span>
                     <span class="log-service">${escapeHtml(log.service)}</span>
@@ -92,16 +130,29 @@ function displayLogs(logs) {
                     <span class="log-host">${escapeHtml(log.host || '')}</span>
                 </div>
                 <div class="log-message">${escapeHtml(log.message)}</div>
+                ${detailsHtml}
                 ${metadataHtml}
             </div>
         `;
     }).join('');
+
+    // Add click handlers to toggle expansion
+    attachLogClickHandlers();
 }
 
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function attachLogClickHandlers() {
+    const logEntries = document.querySelectorAll('.log-entry');
+    logEntries.forEach(entry => {
+        entry.addEventListener('click', function() {
+            this.classList.toggle('expanded');
+        });
+    });
 }
 
 // Auto-refresh toggle

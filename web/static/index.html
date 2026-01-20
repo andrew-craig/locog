@@ -98,6 +98,12 @@
             border-radius: 4px;
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 0.875rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .log-entry:hover {
+            background: #2a2a2b;
         }
 
         .log-entry.error {
@@ -166,6 +172,50 @@
             margin-top: 0.5rem;
             padding-top: 0.5rem;
             border-top: 1px solid #3e3e42;
+            font-size: 0.75rem;
+            color: #858585;
+        }
+
+        .log-details {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #3e3e42;
+            display: none;
+        }
+
+        .log-entry.expanded .log-details {
+            display: block;
+        }
+
+        .log-entry.expanded .log-message {
+            display: none;
+        }
+
+        .log-entry.expanded .log-header {
+            display: none;
+        }
+
+        .detail-row {
+            display: flex;
+            padding: 0.25rem 0;
+            font-size: 0.8rem;
+        }
+
+        .detail-key {
+            color: #4ec9b0;
+            min-width: 120px;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: #d4d4d4;
+            word-wrap: break-word;
+            flex: 1;
+        }
+
+        .detail-value.metadata {
+            white-space: pre-wrap;
+            font-family: 'Consolas', 'Monaco', monospace;
             font-size: 0.75rem;
             color: #858585;
         }
