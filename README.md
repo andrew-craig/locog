@@ -206,6 +206,116 @@ Key settings:
 - `batch.max_events`: Batch size (default: 100)
 - `buffer.max_size`: Buffer size (default: 256MB)
 
+#### Remote Server Configuration
+
+To collect system logs from a remote server and send them to a central Locog instance, use this Vector configuration:
+
+```toml
+# Vector configuration for remote system log shipping
+data_dir = "/var/lib/vector"
+
+# Source: Collect from systemd journal
+[sources.journald]
+type = "journald"
+
+# Transform: Map journald logs to Locog API format
+[transforms.format_for_locog]
+type = "remap"
+inputs = ["journald"]
+source = '''
+  # Map journald priority to log level
+  priority = to_int!(.PRIORITY)
+  .level = if priority <= 3 {
+    "ERROR"
+  } else if priority <= 4 {
+    "WARN"
+  } else if priority <= 6 {
+    "INFO"
+  } else {
+    "DEBUG"
+  }
+
+  # Set service name from systemd identifier or unit
+  .service = if exists(.SYSLOG_IDENTIFIER) {
+    to_string!(.SYSLOG_IDENTIFIER)
+  } else if exists(._SYSTEMD_UNIT) {
+    to_string!(._SYSTEMD_UNIT)
+  } else {
+    "system"
+  }
+
+  # Set message (handle missing or non-string MESSAGE field)
+  .message = if exists(.MESSAGE) {
+    to_string!(.MESSAGE)
+  } else {
+    "no message"
+  }
+
+  # Set timestamp (Vector auto-populates .timestamp)
+  if !exists(.timestamp) {
+    .timestamp = now()
+  }
+
+  # Set hostname
+  .host = to_string(.host) ?? get_hostname!()
+
+  # Store original fields in metadata
+  .metadata = {
+    "pid": ._PID,
+    "unit": ._SYSTEMD_UNIT
+  }
+
+  # Remove fields not needed by Locog API
+  del(.PRIORITY)
+  del(.MESSAGE)
+  del(.SYSLOG_IDENTIFIER)
+  del(._SYSTEMD_UNIT)
+  del(._PID)
+'''
+
+# Sink: Send to remote Locog instance
+[sinks.remote_locog]
+type = "http"
+inputs = ["format_for_locog"]
+uri = "http://your-locog-server:5081/api/ingest"
+encoding.codec = "json"
+
+# Batch settings for better performance
+batch.max_bytes = 1048576  # 1MB
+batch.max_events = 100
+batch.timeout_secs = 5
+
+# Retry and buffer settings
+buffer.type = "disk"
+buffer.max_size = 536870912  # 512MB
+buffer.when_full = "drop_newest"
+
+# Health check
+healthcheck.enabled = true
+```
+
+**Installation on remote server:**
+
+```bash
+# Install Vector (example for Ubuntu/Debian)
+curl -1sLf 'https://repositories.timber.io/public/vector/cfg/setup/bash.deb.sh' | sudo -E bash
+sudo apt-get install vector
+
+# Copy configuration
+sudo cp vector.toml /etc/vector/vector.toml
+
+# Update the Locog server address in the config
+sudo sed -i 's/your-locog-server:5081/actual-server:5081/g' /etc/vector/vector.toml
+
+# Enable and start Vector
+sudo systemctl enable vector
+sudo systemctl start vector
+
+# Check status
+sudo systemctl status vector
+sudo journalctl -u vector -f
+```
+
 ## Maintenance
 
 ### Database Cleanup

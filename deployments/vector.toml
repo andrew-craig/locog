@@ -44,7 +44,7 @@ source = '''
   }
 
   if !exists(.service) {
-    .service = .container_name ?? "unknown"
+    .service = .container_name - "unknown"
   }
 '''
 
