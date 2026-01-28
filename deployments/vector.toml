@@ -1,24 +1,38 @@
 # Vector configuration for log shipping
+#
+# IMPORTANT: Only enable ONE source per application to avoid duplicate logs.
+# - Docker containers: Use docker_logs (enabled by default)
+# - Non-Docker apps: Use journald or file_logs (see examples below)
 
 # Data directory for Vector's state
 data_dir = "/var/lib/vector"
 
 # Source: Collect logs from Docker containers
+# Recommended for Docker deployments - collects stdout from all containers
 [sources.docker_logs]
 type = "docker_logs"
 # Optionally filter by container name/label
 # include_containers = ["my-app-*"]
+# exclude_containers = ["vector"]
 
-# Source: Collect logs from files (if not using Docker)
-[sources.file_logs]
-type = "file"
-include = ["/var/log/apps/*.log"]
-read_from = "end"
+# Source: Collect logs from files (DISABLED by default)
+# Only enable this for non-Docker apps that write to log files.
+# WARNING: Do not enable both docker_logs and file_logs for the same application.
+# [sources.file_logs]
+# type = "file"
+# include = ["/var/log/apps/*.log"]
+# read_from = "end"
+
+# Source: Collect from systemd journal (DISABLED by default)
+# Enable this for non-Docker apps running as systemd services.
+# [sources.journald]
+# type = "journald"
 
 # Transform: Parse JSON logs and add host information
 [transforms.parse_and_enrich]
 type = "remap"
-inputs = ["docker_logs", "file_logs"]
+inputs = ["docker_logs"]
+# Add other sources here if enabled, e.g.: inputs = ["docker_logs", "journald"]
 source = '''
   # Parse JSON if it's a string
   if is_string(.message) {

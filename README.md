@@ -31,6 +31,14 @@ A minimal, self-contained log aggregation and viewing solution using SQLite for 
                                             └──────────────┘
 ```
 
+### Deployment Patterns
+
+**Docker Containers:** Vector collects logs directly from the Docker daemon via the `docker_logs` source. Containers log to stdout as normal, and Vector captures them through the Docker socket.
+
+**Non-Docker Applications:** Applications log to stdout. Use journald (systemd) or file-based collection to capture stdout and ship to Vector.
+
+> **Important:** Only enable one collection method per application to avoid duplicate log ingestion. See [Vector Configuration](#vector) for details.
+
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
@@ -199,9 +207,20 @@ Example:
 
 Edit `deployments/vector.toml` to configure log sources and shipping behavior.
 
+**Source Selection (choose one per application):**
+
+| Deployment Type | Recommended Source | Notes |
+|----------------|-------------------|-------|
+| Docker containers | `docker_logs` | Collects stdout via Docker socket |
+| Systemd services | `journald` | Collects stdout captured by systemd |
+| Legacy apps with log files | `file` | Only if app doesn't support stdout |
+
+> **Warning:** Do not enable multiple sources that capture the same logs. For example, if using `docker_logs` for containers, disable or exclude those containers from `file_logs` to prevent duplicate ingestion.
+
 Key settings:
-- `sources.docker_logs`: Collect from Docker containers
-- `sources.file_logs`: Collect from log files
+- `sources.docker_logs`: Collect from Docker containers (via Docker socket)
+- `sources.journald`: Collect from systemd journal (for non-Docker apps logging to stdout)
+- `sources.file_logs`: Collect from log files (legacy apps only)
 - `sinks.log_collector.uri`: Log service endpoint
 - `batch.max_events`: Batch size (default: 100)
 - `buffer.max_size`: Buffer size (default: 256MB)
