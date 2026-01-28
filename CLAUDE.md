@@ -107,10 +107,3 @@ curl -X POST http://localhost:5081/api/ingest \
 curl "http://localhost:5081/api/logs?service=api-service&level=ERROR&limit=100"
 curl "http://localhost:5081/api/logs?search=database"
 ```
-
-## Performance Characteristics
-
-- Ingestion rate: 10,000+ logs/second (batched)
-- Query performance: Sub-second for most queries on millions of logs
-- Memory usage: ~50MB for service, ~10MB for Vector
-- Disk usage: ~100-200 bytes per log entry
