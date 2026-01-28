@@ -43,12 +43,24 @@ async function loadLogs() {
     const host = document.getElementById('host').value;
     const search = document.getElementById('search').value;
     const limit = document.getElementById('limit').value;
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
 
     if (service) params.append('service', service);
     if (level) params.append('level', level);
     if (host) params.append('host', host);
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit);
+
+    // Convert datetime-local format to RFC3339
+    if (startTime) {
+        const startDate = new Date(startTime);
+        params.append('start', startDate.toISOString());
+    }
+    if (endTime) {
+        const endDate = new Date(endTime);
+        params.append('end', endDate.toISOString());
+    }
 
     try {
         const response = await fetch(`/api/logs?${params}`);
@@ -169,7 +181,7 @@ document.getElementById('autoRefresh').addEventListener('change', (e) => {
 });
 
 // Load logs when filters change
-['service', 'level', 'host', 'limit'].forEach(id => {
+['service', 'level', 'host', 'limit', 'startTime', 'endTime'].forEach(id => {
     document.getElementById(id).addEventListener('change', loadLogs);
 });
 
