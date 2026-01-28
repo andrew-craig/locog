@@ -114,6 +114,14 @@ curl "http://localhost:5081/api/logs?start=2025-01-19T00:00:00Z&end=2025-01-19T2
 
 ## Application Integration
 
+**Important:** When integrating applications with Vector and Locog:
+1. Applications output JSON logs to stdout (see examples below)
+2. Vector collects these logs and parses the JSON
+3. Vector sends the parsed logs to Locog's HTTP API
+4. Locog stores and displays them in the web UI
+
+The Vector configuration must include the JSON parsing transform shown in the [Vector Configuration](#vector-configuration) section above.
+
 ### Python Application
 
 ```python
@@ -123,17 +131,28 @@ import sys
 from datetime import datetime
 
 class JSONFormatter(logging.Formatter):
+    # Standard logging record attributes to exclude from metadata
+    RESERVED_ATTRS = {
+        'name', 'msg', 'args', 'created', 'filename', 'funcName', 'levelname',
+        'levelno', 'lineno', 'module', 'msecs', 'message', 'pathname', 'process',
+        'processName', 'relativeCreated', 'thread', 'threadName', 'exc_info',
+        'exc_text', 'stack_info', 'getMessage', 'getMessage'
+    }
+
     def format(self, record):
         log_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": record.levelname,
-            "service": "my-python-app",
+            "service": "my-python-app",  # Change this to your service name
             "message": record.getMessage(),
             "logger": record.name,
         }
 
-        if hasattr(record, 'extra'):
-            log_data["metadata"] = record.extra
+        # Extract extra fields passed via logger.info(..., extra={...})
+        extra = {k: v for k, v in record.__dict__.items()
+                 if k not in self.RESERVED_ATTRS}
+        if extra:
+            log_data["metadata"] = extra
 
         return json.dumps(log_data)
 
@@ -150,6 +169,11 @@ def setup_logging():
 # Usage
 logger = setup_logging()
 logger.info("User logged in", extra={"user_id": 123, "ip": "192.168.1.1"})
+```
+
+**Expected output to stdout:**
+```json
+{"timestamp": "2026-01-27T10:30:00.123Z", "level": "INFO", "service": "my-python-app", "message": "User logged in", "logger": "__main__", "metadata": {"user_id": 123, "ip": "192.168.1.1"}}
 ```
 
 ### Go Application
@@ -182,6 +206,48 @@ logger.Info("user logged in",
     zap.String("ip", "192.168.1.1"))
 ```
 
+**Expected output to stdout:**
+```json
+{"level":"info","timestamp":"2026-01-27T10:30:00.123Z","service":"my-go-app","msg":"user logged in","user_id":123,"ip":"192.168.1.1"}
+```
+
+### Testing Your Integration
+
+To verify your application, Vector, and Locog are working together:
+
+1. **Test application logging:**
+   ```bash
+   # Run your application and verify JSON is written to stdout
+   python your_app.py  # Should see JSON lines printed
+   ```
+
+2. **Verify Vector is collecting logs:**
+   ```bash
+   # Check Vector logs for any errors
+   docker logs vector  # Or: sudo journalctl -u vector -f
+
+   # Should see lines like:
+   # INFO vector::sources::docker_logs: Collecting from container. container_name="my-app"
+   # INFO vector::sinks::http: Sending batch of 10 events.
+   ```
+
+3. **Check Locog received the logs:**
+   - Open the web UI at `http://localhost:5081`
+   - Look for your service name in the service filter dropdown
+   - Verify the log structure looks correct (not double-JSON-encoded)
+   - Check that metadata fields are properly displayed in the expandable log details
+
+4. **If logs aren't appearing or look wrong:**
+   - Verify your application outputs valid JSON (test with `jq`): `python your_app.py | jq`
+   - Check Vector is parsing the JSON correctly - look for Vector errors
+   - Test manual ingestion to isolate the issue:
+     ```bash
+     # Copy a log line from your app's output and send directly to Locog
+     curl -X POST http://localhost:5081/api/ingest \
+       -H "Content-Type: application/json" \
+       -d '{"timestamp":"2026-01-27T10:30:00Z","service":"test","level":"INFO","message":"test"}'
+     ```
+
 ## Configuration
 
 ### Log Service
@@ -195,18 +261,148 @@ Example:
 ./logservice -db /data/logs.db -addr :9000
 ```
 
-### Vector
+### Vector Configuration
 
-Edit `deployments/vector.toml` to configure log sources and shipping behavior.
+Vector ships logs from your applications to the Locog service. The configuration depends on how your applications run.
 
-Key settings:
-- `sources.docker_logs`: Collect from Docker containers
-- `sources.file_logs`: Collect from log files
-- `sinks.log_collector.uri`: Log service endpoint
-- `batch.max_events`: Batch size (default: 100)
-- `buffer.max_size`: Buffer size (default: 256MB)
+#### Docker Container Logs (Most Common)
 
-#### Remote Server Configuration
+This configuration works with the Python/Go examples above that log JSON to stdout:
+
+```toml
+# Vector configuration for Docker-based applications
+data_dir = "/var/lib/vector"
+
+# Source: Collect logs from Docker containers
+[sources.docker_logs]
+type = "docker_logs"
+# Optionally filter by container name/label
+# include_containers = ["my-app-*"]
+
+# Transform: Parse JSON logs and format for Locog API
+[transforms.parse_and_enrich]
+type = "remap"
+inputs = ["docker_logs"]
+source = '''
+  # Parse JSON from log message
+  parsed = {}
+  if is_string(.message) {
+    parsed, err = parse_json(.message)
+    if err != null {
+      # If not JSON, treat the whole message as a plain log
+      parsed = {
+        "message": .message,
+        "level": "INFO"
+      }
+    }
+  }
+
+  # Construct output with only Locog API fields
+  # This ensures no Docker metadata pollutes the logs
+  . = {
+    "timestamp": parsed.timestamp ?? .timestamp ?? now(),
+    "service": parsed.service ?? .container_name ?? "unknown",
+    "level": parsed.level ?? "INFO",
+    "message": parsed.message ?? parsed.msg ?? "no message",
+    "host": parsed.host ?? get_hostname!(),
+  }
+
+  # Add metadata if present (optional field)
+  if exists(parsed.metadata) {
+    .metadata = parsed.metadata
+  }
+'''
+
+# Sink: Send to Locog service
+[sinks.log_collector]
+type = "http"
+inputs = ["parse_and_enrich"]
+uri = "http://locog:5081/api/ingest"  # Change to your Locog server address
+encoding.codec = "json"
+
+# Batch settings for better performance
+batch.max_bytes = 1048576  # 1MB
+batch.max_events = 100
+batch.timeout_secs = 5
+
+# Retry and buffer settings
+buffer.type = "disk"
+buffer.max_size = 268435488  # 256MB
+buffer.when_full = "drop_newest"
+
+# Health check
+healthcheck.enabled = true
+```
+
+**Key Points:**
+- The `parse_and_enrich` transform parses JSON from your application logs
+- It explicitly constructs a clean output object with only the fields Locog needs (timestamp, service, level, message, host, metadata)
+- This prevents Docker metadata fields (container_id, stream, etc.) from polluting your logs
+- If your app doesn't specify a `service` field, it uses the Docker container name
+- Handles both JSON logs and plain text logs (non-JSON gets wrapped with default level)
+- The sink sends to Locog using HTTP with batching for performance
+
+#### File-Based Logs
+
+For applications that write logs to files instead of Docker stdout:
+
+```toml
+data_dir = "/var/lib/vector"
+
+# Source: Collect from log files
+[sources.file_logs]
+type = "file"
+include = ["/var/log/apps/*.log"]  # Adjust path to your log files
+read_from = "end"  # Start from end, or use "beginning" for existing logs
+
+# Transform: Same as Docker example above
+[transforms.parse_and_enrich]
+type = "remap"
+inputs = ["file_logs"]
+source = '''
+  # Parse JSON from log message
+  parsed = {}
+  if is_string(.message) {
+    parsed, err = parse_json(.message)
+    if err != null {
+      parsed = {
+        "message": .message,
+        "level": "INFO"
+      }
+    }
+  }
+
+  # Construct output with only Locog API fields
+  . = {
+    "timestamp": parsed.timestamp ?? .timestamp ?? now(),
+    "service": parsed.service ?? "unknown",
+    "level": parsed.level ?? "INFO",
+    "message": parsed.message ?? parsed.msg ?? "no message",
+    "host": parsed.host ?? get_hostname!(),
+  }
+
+  # Add metadata if present
+  if exists(parsed.metadata) {
+    .metadata = parsed.metadata
+  }
+'''
+
+# Sink: Same as above
+[sinks.log_collector]
+type = "http"
+inputs = ["parse_and_enrich"]
+uri = "http://localhost:5081/api/ingest"
+encoding.codec = "json"
+batch.max_bytes = 1048576
+batch.max_events = 100
+batch.timeout_secs = 5
+buffer.type = "disk"
+buffer.max_size = 268435488
+buffer.when_full = "drop_newest"
+healthcheck.enabled = true
+```
+
+#### Remote Server System Logs
 
 To collect system logs from a remote server and send them to a central Locog instance, use this Vector configuration:
 
@@ -225,7 +421,7 @@ inputs = ["journald"]
 source = '''
   # Map journald priority to log level
   priority = to_int!(.PRIORITY)
-  .level = if priority <= 3 {
+  level = if priority <= 3 {
     "ERROR"
   } else if priority <= 4 {
     "WARN"
@@ -236,7 +432,7 @@ source = '''
   }
 
   # Set service name from systemd identifier or unit
-  .service = if exists(.SYSLOG_IDENTIFIER) {
+  service = if exists(.SYSLOG_IDENTIFIER) {
     to_string!(.SYSLOG_IDENTIFIER)
   } else if exists(._SYSTEMD_UNIT) {
     to_string!(._SYSTEMD_UNIT)
@@ -245,32 +441,26 @@ source = '''
   }
 
   # Set message (handle missing or non-string MESSAGE field)
-  .message = if exists(.MESSAGE) {
+  message = if exists(.message) {
+    to_string!(.message)
+  } else if exists(.MESSAGE) {
     to_string!(.MESSAGE)
   } else {
     "no message"
   }
 
-  # Set timestamp (Vector auto-populates .timestamp)
-  if !exists(.timestamp) {
-    .timestamp = now()
+  # Construct output with only Locog API fields
+  . = {
+    "timestamp": .timestamp ?? now(),
+    "service": service,
+    "level": level,
+    "message": message,
+    "host": to_string(.host) ?? get_hostname!(),
+    "metadata": {
+      "pid": ._PID,
+      "unit": ._SYSTEMD_UNIT
+    }
   }
-
-  # Set hostname
-  .host = to_string(.host) ?? get_hostname!()
-
-  # Store original fields in metadata
-  .metadata = {
-    "pid": ._PID,
-    "unit": ._SYSTEMD_UNIT
-  }
-
-  # Remove fields not needed by Locog API
-  del(.PRIORITY)
-  del(.MESSAGE)
-  del(.SYSLOG_IDENTIFIER)
-  del(._SYSTEMD_UNIT)
-  del(._PID)
 '''
 
 # Sink: Send to remote Locog instance

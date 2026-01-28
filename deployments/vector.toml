@@ -15,36 +15,36 @@ type = "file"
 include = ["/var/log/apps/*.log"]
 read_from = "end"
 
-# Transform: Parse JSON logs and add host information
+# Transform: Parse JSON logs and format for Locog API
 [transforms.parse_and_enrich]
 type = "remap"
 inputs = ["docker_logs", "file_logs"]
 source = '''
-  # Parse JSON if it's a string
+  # Parse JSON from log message
+  parsed = {}
   if is_string(.message) {
     parsed, err = parse_json(.message)
-    if err == null {
-      . = merge(., parsed)
+    if err != null {
+      # If not JSON, treat the whole message as a plain log
+      parsed = {
+        "message": .message,
+        "level": "INFO"
+      }
     }
   }
 
-  # Add hostname if not present
-  if !exists(.host) {
-    .host = get_hostname!()
+  # Construct output with only Locog API fields
+  . = {
+    "timestamp": parsed.timestamp ?? .timestamp ?? now(),
+    "service": parsed.service ?? .container_name ?? "unknown",
+    "level": parsed.level ?? "INFO",
+    "message": parsed.message ?? parsed.msg ?? "no message",
+    "host": parsed.host ?? get_hostname!(),
   }
 
-  # Ensure timestamp is present
-  if !exists(.timestamp) {
-    .timestamp = now()
-  }
-
-  # Ensure required fields exist
-  if !exists(.level) {
-    .level = "INFO"
-  }
-
-  if !exists(.service) {
-    .service = .container_name - "unknown"
+  # Add metadata if present (optional field)
+  if exists(parsed.metadata) {
+    .metadata = parsed.metadata
   }
 '''
 
