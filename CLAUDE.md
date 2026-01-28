@@ -49,6 +49,118 @@ cd deployments && docker-compose up -d
 - `GET /health` - Health check
 - `GET /` - Serve web UI
 
+## Data Flow Diagrams
+
+### Log Ingestion Flow
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Vector as Vector Shipper
+    participant API as HTTP API<br/>(main.go)
+    participant Rate as Rate Limiter<br/>(per-IP)
+    participant Val as Validator
+    participant DB as Database Layer<br/>(sqlite.go)
+    participant SQLite as SQLite DB<br/>(WAL mode)
+
+    App->>Vector: stdout logs
+    Vector->>API: POST /api/ingest<br/>(JSON single or batch)
+    API->>Rate: Check rate limit
+    alt Rate limit exceeded
+        Rate-->>API: Deny
+        API-->>Vector: 429 Too Many Requests
+    else Rate limit OK
+        Rate-->>API: Allow
+        API->>API: Parse JSON<br/>(single or batch)
+        API->>Val: Validate each log
+        Val->>Val: Check required fields<br/>(service, level, message)
+        alt Validation fails
+            Val-->>API: Error
+            API-->>Vector: 400 Bad Request
+        else Validation OK
+            Val-->>API: Valid
+            alt Batch (multiple logs)
+                API->>DB: InsertBatch(logs)
+                DB->>DB: Begin transaction
+                DB->>SQLite: Prepared statement<br/>(batch insert)
+                SQLite-->>DB: Success
+                DB->>DB: Commit transaction
+            else Single log
+                API->>DB: InsertLog(log)
+                DB->>SQLite: Parameterized query<br/>(single insert)
+                SQLite-->>DB: Success
+            end
+            DB-->>API: Success
+            API-->>Vector: 201 Created
+        end
+    end
+
+    Note over SQLite: - WAL journal mode<br/>- 64MB cache<br/>- Indexed on timestamp,<br/>  service, level, host
+```
+
+### User Query Flow
+
+```mermaid
+sequenceDiagram
+    participant User as User Browser
+    participant UI as Web UI<br/>(app.js)
+    participant API as HTTP API<br/>(main.go)
+    participant Cache as Filter Cache<br/>(30s TTL)
+    participant DB as Database Layer<br/>(sqlite.go)
+    participant SQLite as SQLite DB
+
+    User->>UI: Open log viewer
+    UI->>API: GET /api/filters
+    API->>Cache: Check filter cache
+    alt Cache hit (fresh)
+        Cache-->>API: Return cached options
+    else Cache miss/expired
+        API->>DB: GetFilterOptions()
+        DB->>SQLite: SELECT DISTINCT service
+        SQLite-->>DB: Services list
+        DB->>SQLite: SELECT DISTINCT level
+        SQLite-->>DB: Levels list
+        DB->>SQLite: SELECT DISTINCT host
+        SQLite-->>DB: Hosts list
+        DB-->>API: FilterOptions
+        API->>Cache: Update cache (30s)
+    end
+    API-->>UI: JSON {services, levels, hosts}
+    UI->>UI: Populate dropdowns
+
+    User->>UI: Select filters/search
+    UI->>API: GET /api/logs?service=X&level=Y&search=Z&limit=N
+    API->>DB: QueryLogs(filter)
+    DB->>DB: Build WHERE clause
+    DB->>SQLite: SELECT * FROM logs<br/>WHERE conditions<br/>ORDER BY timestamp DESC<br/>LIMIT N
+    Note over SQLite: Uses indexes for<br/>efficient filtering
+    SQLite-->>DB: Result rows
+    DB->>DB: Unmarshal metadata JSON
+    DB-->>API: []Log
+    API-->>UI: JSON log array
+    UI->>UI: Render log entries
+    UI-->>User: Display logs
+
+    opt Auto-refresh enabled
+        loop Every 10 seconds
+            UI->>API: GET /api/logs (same filters)
+            API->>DB: QueryLogs(filter)
+            DB->>SQLite: SELECT query
+            SQLite-->>DB: Result rows
+            DB-->>API: []Log
+            API-->>UI: Updated logs
+            UI->>UI: Re-render display
+        end
+    end
+
+    opt Cleanup routine (daily)
+        API->>DB: DeleteOldLogs(30 days)
+        DB->>SQLite: DELETE FROM logs<br/>WHERE timestamp < cutoff
+        SQLite-->>DB: Rows deleted
+        DB-->>API: Deleted count
+    end
+```
+
 ## Code Conventions
 
 - Database operations go in `internal/db` package
