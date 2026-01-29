@@ -33,17 +33,124 @@ A minimal, self-contained log aggregation and viewing solution using SQLite for 
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Using Docker Compose with Pre-built Images (Recommended)
 
-1. Start the services:
+1. Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  locog:
+    image: ghcr.io/andrew-craig/locog:main
+    ports:
+      - "5081:5081"
+    volumes:
+      - ./data:/data
+    command: ["-db", "/data/logs.db", "-addr", ":5081"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  vector:
+    image: timberio/vector:0.35.0-alpine
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./vector.toml:/etc/vector/vector.toml:ro
+      - vector-data:/var/lib/vector
+    depends_on:
+      locog:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  vector-data:
+```
+
+2. Create a `vector.toml` file:
+
+```toml
+# Vector configuration for log shipping
+data_dir = "/var/lib/vector"
+
+# Source: Collect logs from Docker containers
+[sources.docker_logs]
+type = "docker_logs"
+# Optionally filter by container name/label
+# include_containers = ["my-app-*"]
+
+# Transform: Parse JSON logs and format for Locog API
+[transforms.parse_and_enrich]
+type = "remap"
+inputs = ["docker_logs"]
+source = '''
+  # Parse JSON from log message
+  parsed = {}
+  if is_string(.message) {
+    parsed, err = parse_json(.message)
+    if err != null {
+      # If not JSON, treat the whole message as a plain log
+      parsed = {
+        "message": .message,
+        "level": "INFO"
+      }
+    }
+  }
+
+  # Construct output with only Locog API fields
+  . = {
+    "timestamp": parsed.timestamp ?? .timestamp ?? now(),
+    "service": parsed.service ?? .container_name ?? "unknown",
+    "level": parsed.level ?? "INFO",
+    "message": parsed.message ?? parsed.msg ?? "no message",
+    "host": parsed.host ?? get_hostname!(),
+  }
+
+  # Add metadata if present (optional field)
+  if exists(parsed.metadata) {
+    .metadata = parsed.metadata
+  }
+'''
+
+# Sink: Send to log collector service
+[sinks.log_collector]
+type = "http"
+inputs = ["parse_and_enrich"]
+uri = "http://locog:5081/api/ingest"
+encoding.codec = "json"
+
+# Batch settings for better performance
+batch.max_bytes = 1048576  # 1MB
+batch.max_events = 100
+batch.timeout_secs = 5
+
+# Retry settings
+buffer.type = "disk"
+buffer.max_size = 268435488  # 256MB buffer
+buffer.when_full = "drop_newest"
+
+# Health check configuration
+healthcheck.enabled = true
+```
+
+3. Start the services:
 ```bash
-cd deployments
 docker-compose up -d
 ```
 
-2. Access the web UI at `http://localhost:5081`
+4. Access the web UI at `http://localhost:5081`
 
-### Building from Source
+### Building from Source (Self-Build)
+
+If you prefer to build the container locally:
+
+```bash
+cd self-build
+docker-compose up -d
+```
+
+### Building the Binary
 
 1. Build the binary:
 ```bash
@@ -616,8 +723,8 @@ locog/
 │   └── static/
 │       ├── index.html        # Web UI
 │       └── app.js            # Frontend JavaScript
-├── deployments/
-│   ├── docker-compose.yml    # Docker deployment
+├── self-build/
+│   ├── docker-compose.yml    # Self-build Docker deployment
 │   └── vector.toml           # Vector configuration
 ├── schema.sql                # Database schema
 ├── Dockerfile                # Docker build

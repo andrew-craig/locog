@@ -22,8 +22,8 @@ go test ./...
 go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 
-# Build and run with Docker
-cd deployments && docker-compose up -d
+# Build and run with Docker (self-build)
+cd self-build && docker-compose up -d
 ```
 
 ## Architecture
@@ -35,7 +35,7 @@ cd deployments && docker-compose up -d
 - `internal/db/sqlite.go` - Database layer with prepared statements, connection pooling, WAL mode
 - `internal/models/log.go` - Data models (Log, LogFilter, FilterOptions)
 - `web/static/` - Browser-based UI with real-time filtering (vanilla JS, dark theme)
-- `deployments/` - Docker Compose and Vector configuration
+- `self-build/` - Docker Compose and Vector configuration (for building locally)
 
 **Test Files:**
 - `cmd/logservice/main_test.go` - HTTP handler and utility function tests
