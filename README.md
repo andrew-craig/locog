@@ -1,34 +1,34 @@
 # Locog - Lightweight Log Viewer
 
-A minimal, self-contained log aggregation and viewing solution using SQLite for storage, a single Go binary for collection and viewing, and Vector for log shipping.
+Locog is a minimal, self-contained log aggregation and viewing solution.
+
+NOTE: AI built this app. Do not use in production scenarios or with sensitive data.
 
 ## Features
 
-- **Lightweight**: Single Go binary, ~50MB RAM usage
+- **Lightweight**: Single Go binary
 - **Simple deployment**: SQLite database, no external dependencies
 - **Real-time viewing**: Web UI with auto-refresh
 - **Flexible filtering**: By service, level, host, and full-text search
 - **Production-ready**: Follows 12-factor app principles
-- **Decoupled logging**: Applications log to stdout, Vector ships to collector
+- **Decoupled logging**: Receives logs from log shippers like Vector
 
 ## Architecture
 
 ```
 ┌─────────────────┐
 │  App (Python)   │──┐
-│  logs to stdout │  │
-└─────────────────┘  │
-                     ├──> ┌─────────┐      ┌──────────────────┐      ┌─────────┐
-┌─────────────────┐  │    │ Vector  │─────>│  Log Service     │─────>│ SQLite  │
-│  App (Go)       │──┘    │ (shipper)│      │  (Go binary)     │      │  DB     │
-│  logs to stdout │       └─────────┘      │  :5081           │      └─────────┘
-└─────────────────┘                        └──────────────────┘
-                                                   │
-                                                   ▼
-                                            ┌──────────────┐
-                                            │  Web UI      │
-                                            │  (browser)   │
-                                            └──────────────┘
+│  logs to stdout │  │    ┌───────────┐      ┌──────────────────┐      ┌─────────┐
+└─────────────────┘  │    │ Vector    │─────>│  Log Service     │─────>│ SQLite  │
+                     ├──> │ (shipper) │      │  (Go binary)     │      │  DB     │
+┌─────────────────┐  │    └───────────┘      │  :5081           │      └─────────┘
+│  App (Go)       │──┘                       └──────────────────┘
+│  logs to stdout │                                   │ 
+└─────────────────┘                                   ▼ 
+                                               ┌──────────────┐
+                                               │  Web UI      │
+                                               │  (browser)   │
+                                               └──────────────┘
 ```
 
 ## Quick Start
@@ -141,7 +141,7 @@ docker-compose up -d
 
 4. Access the web UI at `http://localhost:5081`
 
-### Building from Source (Self-Build)
+### Building from Source (Docker self-build)
 
 If you prefer to build the container locally:
 
@@ -229,150 +229,11 @@ curl "http://localhost:5081/api/logs?start=2025-01-19T00:00:00Z&end=2025-01-19T2
 
 The Vector configuration must include the JSON parsing transform shown in the [Vector Configuration](#vector-configuration) section above.
 
-### Python Application
-
-```python
-import logging
-import json
-import sys
-from datetime import datetime
-
-class JSONFormatter(logging.Formatter):
-    # Standard logging record attributes to exclude from metadata
-    RESERVED_ATTRS = {
-        'name', 'msg', 'args', 'created', 'filename', 'funcName', 'levelname',
-        'levelno', 'lineno', 'module', 'msecs', 'message', 'pathname', 'process',
-        'processName', 'relativeCreated', 'thread', 'threadName', 'exc_info',
-        'exc_text', 'stack_info', 'getMessage', 'getMessage'
-    }
-
-    def format(self, record):
-        log_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "level": record.levelname,
-            "service": "my-python-app",  # Change this to your service name
-            "message": record.getMessage(),
-            "logger": record.name,
-        }
-
-        # Extract extra fields passed via logger.info(..., extra={...})
-        extra = {k: v for k, v in record.__dict__.items()
-                 if k not in self.RESERVED_ATTRS}
-        if extra:
-            log_data["metadata"] = extra
-
-        return json.dumps(log_data)
-
-def setup_logging():
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JSONFormatter())
-
-    logger = logging.getLogger()
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-
-    return logger
-
-# Usage
-logger = setup_logging()
-logger.info("User logged in", extra={"user_id": 123, "ip": "192.168.1.1"})
-```
-
-**Expected output to stdout:**
-```json
-{"timestamp": "2026-01-27T10:30:00.123Z", "level": "INFO", "service": "my-python-app", "message": "User logged in", "logger": "__main__", "metadata": {"user_id": 123, "ip": "192.168.1.1"}}
-```
-
-### Go Application
-
-```go
-import (
-    "go.uber.org/zap"
-    "go.uber.org/zap/zapcore"
-)
-
-func setupLogger(serviceName string) (*zap.Logger, error) {
-    config := zap.NewProductionConfig()
-    config.EncoderConfig.TimeKey = "timestamp"
-    config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-    config.OutputPaths = []string{"stdout"}
-
-    logger, err := config.Build()
-    if err != nil {
-        return nil, err
-    }
-
-    logger = logger.With(zap.String("service", serviceName))
-    return logger, nil
-}
-
-// Usage
-logger, _ := setupLogger("my-go-app")
-logger.Info("user logged in",
-    zap.Int("user_id", 123),
-    zap.String("ip", "192.168.1.1"))
-```
-
-**Expected output to stdout:**
-```json
-{"level":"info","timestamp":"2026-01-27T10:30:00.123Z","service":"my-go-app","msg":"user logged in","user_id":123,"ip":"192.168.1.1"}
-```
-
-### Testing Your Integration
-
-To verify your application, Vector, and Locog are working together:
-
-1. **Test application logging:**
-   ```bash
-   # Run your application and verify JSON is written to stdout
-   python your_app.py  # Should see JSON lines printed
-   ```
-
-2. **Verify Vector is collecting logs:**
-   ```bash
-   # Check Vector logs for any errors
-   docker logs vector  # Or: sudo journalctl -u vector -f
-
-   # Should see lines like:
-   # INFO vector::sources::docker_logs: Collecting from container. container_name="my-app"
-   # INFO vector::sinks::http: Sending batch of 10 events.
-   ```
-
-3. **Check Locog received the logs:**
-   - Open the web UI at `http://localhost:5081`
-   - Look for your service name in the service filter dropdown
-   - Verify the log structure looks correct (not double-JSON-encoded)
-   - Check that metadata fields are properly displayed in the expandable log details
-
-4. **If logs aren't appearing or look wrong:**
-   - Verify your application outputs valid JSON (test with `jq`): `python your_app.py | jq`
-   - Check Vector is parsing the JSON correctly - look for Vector errors
-   - Test manual ingestion to isolate the issue:
-     ```bash
-     # Copy a log line from your app's output and send directly to Locog
-     curl -X POST http://localhost:5081/api/ingest \
-       -H "Content-Type: application/json" \
-       -d '{"timestamp":"2026-01-27T10:30:00Z","service":"test","level":"INFO","message":"test"}'
-     ```
-
-## Configuration
-
-### Log Service
-
-Command-line flags:
-- `-db`: Path to SQLite database (default: `logs.db`)
-- `-addr`: HTTP service address (default: `:5081`)
-
-Example:
-```bash
-./logservice -db /data/logs.db -addr :9000
-```
-
 ### Vector Configuration
 
 Vector ships logs from your applications to the Locog service. The configuration depends on how your applications run.
 
-#### Docker Container Logs (Most Common)
+#### Docker Container Logs
 
 This configuration works with the Python/Go examples above that log JSON to stdout:
 
@@ -613,6 +474,146 @@ sudo systemctl status vector
 sudo journalctl -u vector -f
 ```
 
+### Python Application
+
+```python
+import logging
+import json
+import sys
+from datetime import datetime
+
+class JSONFormatter(logging.Formatter):
+    # Standard logging record attributes to exclude from metadata
+    RESERVED_ATTRS = {
+        'name', 'msg', 'args', 'created', 'filename', 'funcName', 'levelname',
+        'levelno', 'lineno', 'module', 'msecs', 'message', 'pathname', 'process',
+        'processName', 'relativeCreated', 'thread', 'threadName', 'exc_info',
+        'exc_text', 'stack_info', 'getMessage', 'getMessage'
+    }
+
+    def format(self, record):
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "service": "my-python-app",  # Change this to your service name
+            "message": record.getMessage(),
+            "logger": record.name,
+        }
+
+        # Extract extra fields passed via logger.info(..., extra={...})
+        extra = {k: v for k, v in record.__dict__.items()
+                 if k not in self.RESERVED_ATTRS}
+        if extra:
+            log_data["metadata"] = extra
+
+        return json.dumps(log_data)
+
+def setup_logging():
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(JSONFormatter())
+
+    logger = logging.getLogger()
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    return logger
+
+# Usage
+logger = setup_logging()
+logger.info("User logged in", extra={"user_id": 123, "ip": "192.168.1.1"})
+```
+
+**Expected output to stdout:**
+```json
+{"timestamp": "2026-01-27T10:30:00.123Z", "level": "INFO", "service": "my-python-app", "message": "User logged in", "logger": "__main__", "metadata": {"user_id": 123, "ip": "192.168.1.1"}}
+```
+
+### Go Application
+
+```go
+import (
+    "go.uber.org/zap"
+    "go.uber.org/zap/zapcore"
+)
+
+func setupLogger(serviceName string) (*zap.Logger, error) {
+    config := zap.NewProductionConfig()
+    config.EncoderConfig.TimeKey = "timestamp"
+    config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+    config.OutputPaths = []string{"stdout"}
+
+    logger, err := config.Build()
+    if err != nil {
+        return nil, err
+    }
+
+    logger = logger.With(zap.String("service", serviceName))
+    return logger, nil
+}
+
+// Usage
+logger, _ := setupLogger("my-go-app")
+logger.Info("user logged in",
+    zap.Int("user_id", 123),
+    zap.String("ip", "192.168.1.1"))
+```
+
+**Expected output to stdout:**
+```json
+{"level":"info","timestamp":"2026-01-27T10:30:00.123Z","service":"my-go-app","msg":"user logged in","user_id":123,"ip":"192.168.1.1"}
+```
+
+### Testing Your Integration
+
+To verify your application, Vector, and Locog are working together:
+
+1. **Test application logging:**
+   ```bash
+   # Run your application and verify JSON is written to stdout
+   python your_app.py  # Should see JSON lines printed
+   ```
+
+2. **Verify Vector is collecting logs:**
+   ```bash
+   # Check Vector logs for any errors
+   docker logs vector  # Or: sudo journalctl -u vector -f
+
+   # Should see lines like:
+   # INFO vector::sources::docker_logs: Collecting from container. container_name="my-app"
+   # INFO vector::sinks::http: Sending batch of 10 events.
+   ```
+
+3. **Check Locog received the logs:**
+   - Open the web UI at `http://localhost:5081`
+   - Look for your service name in the service filter dropdown
+   - Verify the log structure looks correct (not double-JSON-encoded)
+   - Check that metadata fields are properly displayed in the expandable log details
+
+4. **If logs aren't appearing or look wrong:**
+   - Verify your application outputs valid JSON (test with `jq`): `python your_app.py | jq`
+   - Check Vector is parsing the JSON correctly - look for Vector errors
+   - Test manual ingestion to isolate the issue:
+     ```bash
+     # Copy a log line from your app's output and send directly to Locog
+     curl -X POST http://localhost:5081/api/ingest \
+       -H "Content-Type: application/json" \
+       -d '{"timestamp":"2026-01-27T10:30:00Z","service":"test","level":"INFO","message":"test"}'
+     ```
+
+## Configuration
+
+### Log Service
+
+Command-line flags:
+- `-db`: Path to SQLite database (default: `logs.db`)
+- `-addr`: HTTP service address (default: `:5081`)
+
+Example:
+```bash
+./logservice -db /data/logs.db -addr :9000
+```
+
+
 ## Maintenance
 
 ### Database Cleanup
@@ -656,25 +657,6 @@ Database statistics:
 sqlite3 logs.db "SELECT COUNT(*) FROM logs;"
 du -h logs.db
 ```
-
-## Performance
-
-- **Ingestion rate**: 10,000+ logs/second (batched)
-- **Query performance**: Sub-second for most queries on millions of logs
-- **Memory usage**: ~50MB for service, ~10MB for Vector
-- **Disk usage**: ~100-200 bytes per log entry
-- **Default retention**: 30 days
-
-## Scaling
-
-For higher scale:
-
-1. **Multiple collectors**: Run Vector on each server pointing to central log service
-2. **Database sharding**: Split logs by time period into separate databases
-3. **Read replicas**: Copy SQLite files for multiple read-only query instances
-4. **Partition by service**: Run separate instances per service with different databases
-
-If you exceed ~100K logs/minute, consider moving to Loki, OpenSearch, or similar.
 
 ## Troubleshooting
 
