@@ -74,6 +74,16 @@ async function loadLogs() {
     }
 }
 
+function getLogLevelIcon(level) {
+    const iconMap = {
+        'ERROR': 'x-octagon',
+        'WARN': 'alert-triangle',
+        'INFO': 'alert-circle',
+        'DEBUG': 'alert-circle'
+    };
+    return iconMap[level.toUpperCase()] || 'alert-circle';
+}
+
 function displayLogs(logs) {
     const container = document.getElementById('logsContainer');
 
@@ -85,6 +95,7 @@ function displayLogs(logs) {
     container.innerHTML = logs.map((log, index) => {
         const timestamp = new Date(log.timestamp).toLocaleString();
         const levelClass = escapeHtml(log.level.toLowerCase());
+        const iconName = getLogLevelIcon(log.level);
 
         let metadataHtml = '';
         if (log.metadata && Object.keys(log.metadata).length > 0) {
@@ -136,6 +147,7 @@ function displayLogs(logs) {
         return `
             <div class="log-entry ${levelClass}" data-index="${index}">
                 <div class="log-header">
+                    <i data-feather="${iconName}" class="log-level-icon ${escapeHtml(log.level)}"></i>
                     <span class="log-timestamp">${timestamp}</span>
                     <span class="log-service">${escapeHtml(log.service)}</span>
                     <span class="log-level ${levelClass}">${escapeHtml(log.level)}</span>
@@ -147,6 +159,9 @@ function displayLogs(logs) {
             </div>
         `;
     }).join('');
+
+    // Replace feather icon placeholders with SVG
+    feather.replace();
 
     // Add click handlers to toggle expansion
     attachLogClickHandlers();
