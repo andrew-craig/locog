@@ -27,6 +27,10 @@
             flex-shrink: 0;
             background: #252526;
 
+            @media (max-width: 768px) {
+                flex-direction: column;
+            }
+
         }
 
         header {
@@ -40,6 +44,10 @@
             font-size: 1.1rem;
             font-weight: 500;
             line-height: 2.25rem;
+
+            @media (max-width: 768px) {
+                line-height: 1.1rem;
+            }
         }
 
         .filters {
@@ -70,6 +78,10 @@
             padding: 0.5rem;
             border-radius: 4px;
             font-size: 0.875rem;
+            
+            @media (max-width: 768px) {
+                max-width: 160px;
+            }
         }
 
         select {
@@ -301,18 +313,16 @@
             </div>
 
             <div class="filter-group">
-                <label for="startTime">Start Date:</label>
-                <input type="date" id="startTime" title="Filter logs from this date onwards">
-            </div>
-
-            <div class="filter-group">
-                <label for="endTime">End Date:</label>
-                <input type="date" id="endTime" title="Filter logs up to this date">
-            </div>
-
-            <div class="filter-group">
                 <label for="search">Search:</label>
                 <input type="text" id="search" placeholder="Search in messages...">
+            </div>
+
+
+            <div class="filter-group">
+                <label for="startTime">Dates:</label>
+                <input type="date" id="startTime" title="Filter logs from this date onwards">
+                -
+                <input type="date" id="endTime" title="Filter logs up to this date">
             </div>
 
             <div class="filter-group">
