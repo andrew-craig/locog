@@ -36,7 +36,4 @@ deployments/data
 
 # Test data 
 self-build/data
-self-build/data
-self-build/data/logs.db
-self-build/data/logs.db-shm
-self-build/data/logs.db-wal
+self-build/data/*
