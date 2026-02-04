@@ -34,7 +34,7 @@ cd self-build && docker-compose up -d
 - `cmd/logservice/main.go` - Single binary entry point, HTTP server, API handlers
 - `internal/db/sqlite.go` - Database layer with prepared statements, connection pooling, WAL mode
 - `internal/models/log.go` - Data models (Log, LogFilter, FilterOptions)
-- `web/static/` - Browser-based UI with real-time filtering (vanilla JS, dark theme)
+- `cmd/logservice/static/` - Browser-based UI with real-time filtering (vanilla JS, dark theme, embedded at build time)
 - `self-build/` - Docker Compose and Vector configuration (for building locally)
 
 **Test Files:**

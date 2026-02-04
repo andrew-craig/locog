@@ -695,16 +695,15 @@ MIT
 locog/
 ├── cmd/
 │   └── logservice/
-│       └── main.go           # Single binary for collector + viewer
+│       ├── main.go           # Single binary for collector + viewer
+│       └── static/           # Web UI files (embedded at build time)
+│           ├── index.html    # Web UI
+│           └── app.js        # Frontend JavaScript
 ├── internal/
 │   ├── db/
 │   │   └── sqlite.go         # Database operations
 │   └── models/
 │       └── log.go            # Log data structures
-├── web/
-│   └── static/
-│       ├── index.html        # Web UI
-│       └── app.js            # Frontend JavaScript
 ├── self-build/
 │   ├── docker-compose.yml    # Self-build Docker deployment
 │   └── vector.toml           # Vector configuration

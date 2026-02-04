@@ -7,7 +7,6 @@ services:
       - "5081:5081"
     volumes:
       - ./data:/data
-      - ../web/static:/app/web/static:ro
     command: ["-db", "/data/logs.db", "-addr", ":5081"]
     restart: unless-stopped
     healthcheck:
@@ -20,7 +19,7 @@ services:
     image: timberio/vector:0.35.0-alpine
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./vector.toml:/etc/vector/vector.toml:ro
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
       - vector-data:/var/lib/vector
     depends_on:
       locog:

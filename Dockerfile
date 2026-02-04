@@ -13,7 +13,6 @@ RUN apk --no-cache add ca-certificates sqlite wget
 
 WORKDIR /app
 COPY --from=builder /app/logservice .
-COPY web/static ./web/static
 
 EXPOSE 5081
 ENTRYPOINT ["./logservice"]

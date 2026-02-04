@@ -43,12 +43,24 @@ async function loadLogs() {
     const host = document.getElementById('host').value;
     const search = document.getElementById('search').value;
     const limit = document.getElementById('limit').value;
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
 
     if (service) params.append('service', service);
     if (level) params.append('level', level);
     if (host) params.append('host', host);
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit);
+
+    // Convert date format to RFC3339
+    if (startTime) {
+        const startDate = new Date(startTime + 'T00:00:00Z');
+        params.append('start', startDate.toISOString());
+    }
+    if (endTime) {
+        const endDate = new Date(endTime + 'T23:59:59.999Z');
+        params.append('end', endDate.toISOString());
+    }
 
     try {
         const response = await fetch(`/api/logs?${params}`);
@@ -62,6 +74,16 @@ async function loadLogs() {
     }
 }
 
+function getLogLevelIcon(level) {
+    const iconMap = {
+        'ERROR': 'x-octagon',
+        'WARN': 'alert-triangle',
+        'INFO': 'alert-circle',
+        'DEBUG': 'alert-circle'
+    };
+    return iconMap[level.toUpperCase()] || 'alert-circle';
+}
+
 function displayLogs(logs) {
     const container = document.getElementById('logsContainer');
 
@@ -70,9 +92,10 @@ function displayLogs(logs) {
         return;
     }
 
-    container.innerHTML = logs.map(log => {
+    container.innerHTML = logs.map((log, index) => {
         const timestamp = new Date(log.timestamp).toLocaleString();
         const levelClass = escapeHtml(log.level.toLowerCase());
+        const iconName = getLogLevelIcon(log.level);
 
         let metadataHtml = '';
         if (log.metadata && Object.keys(log.metadata).length > 0) {
@@ -83,25 +106,79 @@ function displayLogs(logs) {
             `;
         }
 
+        // Build details view with all log fields as key:value pairs
+        const detailsHtml = `
+            <div class="log-details">
+                ${log.id ? `<div class="detail-row">
+                    <div class="detail-key">ID:</div>
+                    <div class="detail-value">${escapeHtml(String(log.id))}</div>
+                </div>` : ''}
+                <div class="detail-row">
+                    <div class="detail-key">Timestamp:</div>
+                    <div class="detail-value">${timestamp}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-key">Service:</div>
+                    <div class="detail-value">${escapeHtml(log.service)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-key">Level:</div>
+                    <div class="detail-value">${escapeHtml(log.level)}</div>
+                </div>
+                ${log.host ? `<div class="detail-row">
+                    <div class="detail-key">Host:</div>
+                    <div class="detail-value">${escapeHtml(log.host)}</div>
+                </div>` : ''}
+                <div class="detail-row">
+                    <div class="detail-key">Message:</div>
+                    <div class="detail-value">${escapeHtml(log.message)}</div>
+                </div>
+                ${log.metadata && Object.keys(log.metadata).length > 0 ? `<div class="detail-row">
+                    <div class="detail-key">Metadata:</div>
+                    <div class="detail-value metadata">${escapeHtml(JSON.stringify(log.metadata, null, 2))}</div>
+                </div>` : ''}
+                ${log.created_at ? `<div class="detail-row">
+                    <div class="detail-key">Created At:</div>
+                    <div class="detail-value">${new Date(log.created_at).toISOString()}</div>
+                </div>` : ''}
+            </div>
+        `;
+
         return `
-            <div class="log-entry ${levelClass}">
+            <div class="log-entry ${levelClass}" data-index="${index}">
                 <div class="log-header">
+                    <i data-feather="${iconName}" class="log-level-icon ${escapeHtml(log.level)}"></i>
                     <span class="log-timestamp">${timestamp}</span>
                     <span class="log-service">${escapeHtml(log.service)}</span>
-                    <span class="log-level ${levelClass}">${escapeHtml(log.level)}</span>
                     <span class="log-host">${escapeHtml(log.host || '')}</span>
                 </div>
                 <div class="log-message">${escapeHtml(log.message)}</div>
+                ${detailsHtml}
                 ${metadataHtml}
             </div>
         `;
     }).join('');
+
+    // Replace feather icon placeholders with SVG
+    feather.replace();
+
+    // Add click handlers to toggle expansion
+    attachLogClickHandlers();
 }
 
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function attachLogClickHandlers() {
+    const logEntries = document.querySelectorAll('.log-entry');
+    logEntries.forEach(entry => {
+        entry.addEventListener('click', function() {
+            this.classList.toggle('expanded');
+        });
+    });
 }
 
 // Auto-refresh toggle
@@ -118,7 +195,7 @@ document.getElementById('autoRefresh').addEventListener('change', (e) => {
 });
 
 // Load logs when filters change
-['service', 'level', 'host', 'limit'].forEach(id => {
+['service', 'level', 'host', 'limit', 'startTime', 'endTime'].forEach(id => {
     document.getElementById(id).addEventListener('change', loadLogs);
 });
 
