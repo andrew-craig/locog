@@ -215,7 +215,20 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 		// Validate required fields
 		if err := validateLog(&logs[i]); err != nil {
-			slog.Warn("invalid log entry", "index", i, "error", err)
+			// Marshal the invalid log entry for debugging (truncate if too large)
+			logJSON, _ := json.Marshal(logs[i])
+			logBody := string(logJSON)
+			if len(logBody) > 500 {
+				logBody = logBody[:500] + "... (truncated)"
+			}
+
+			slog.Warn("invalid log entry",
+				"sender", ip,
+				"index", i,
+				"total_logs", len(logs),
+				"reason", err.Error(),
+				"log_body", logBody,
+			)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
