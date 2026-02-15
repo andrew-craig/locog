@@ -152,7 +152,6 @@ async function loadLogs() {
     const level = document.getElementById('level').value;
     const host = document.getElementById('host').value;
     const search = document.getElementById('search').value;
-    const limit = document.getElementById('limit').value;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
 
@@ -160,7 +159,6 @@ async function loadLogs() {
     if (level) params.append('level', level);
     if (host) params.append('host', host);
     if (search) params.append('search', search);
-    if (limit) params.append('limit', limit);
 
     // Convert date format to RFC3339
     if (startTime) {
@@ -293,7 +291,7 @@ function attachLogClickHandlers() {
 }
 
 // Load logs when filters change
-['service', 'level', 'host', 'limit', 'startTime', 'endTime'].forEach(id => {
+['service', 'level', 'host', 'startTime', 'endTime'].forEach(id => {
     document.getElementById(id).addEventListener('change', () => {
         updateMobileFilterSummary();
         loadLogs();
@@ -335,12 +333,6 @@ function connectWebSocket() {
 
             // Prepend new logs (they appear newest-first)
             currentLogs = matchingLogs.concat(currentLogs);
-
-            // Respect the limit setting
-            const limit = parseInt(document.getElementById('limit').value) || 500;
-            if (currentLogs.length > limit) {
-                currentLogs = currentLogs.slice(0, limit);
-            }
 
             displayLogs(currentLogs);
         } catch (e) {

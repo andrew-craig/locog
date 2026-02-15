@@ -110,7 +110,7 @@
 
         .top-bar-wrapper {
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             width: 100%;
             flex-shrink: 0;
             background: var(--bg-secondary);
@@ -285,41 +285,14 @@
             flex-shrink: 0;
         }
 
-        @media (max-width: 768px) {
-            .mobile-filter-bar {
-                display: flex;
-            }
-
-            .filters {
-                display: none;
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .filters.mobile-expanded {
-                display: flex;
-            }
-
-            .filters .filter-group {
-                width: 100%;
-            }
-
-            .filters .filter-group select,
-            .filters .filter-group input[type="text"] {
-                flex: 1;
-                max-width: none;
-            }
-
-            .filters .filter-group input[type="date"] {
-                flex: 1;
-                max-width: none;
-            }
-        }
+        
 
         .filter-group {
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            flex-grow: 1;
+            flex-shrink: 0;
         }
 
         label {
@@ -338,6 +311,11 @@
             @media (max-width: 768px) {
                 max-width: 160px;
             }
+        }
+
+        .filter-group input, .filter-group select {
+            flex-grow: 1;
+            flex-shrink: 0;
         }
 
         select {
@@ -548,13 +526,46 @@
         .ws-status.disconnected {
             background: var(--error-color);
         }
+
+        @media (max-width: 768px) {
+            .mobile-filter-bar {
+                display: flex;
+            }
+
+            .filters {
+                display: none;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filters.mobile-expanded {
+                display: flex;
+            }
+
+            .filters .filter-group {
+                width: 100%;
+            }
+
+            .filters .filter-group select,
+            .filters .filter-group input[type="text"] {
+                flex: 1;
+                max-width: none;
+            }
+
+            .filters .filter-group input[type="date"] {
+                flex: 1;
+                max-width: none;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="top-bar-wrapper">
-        <header>
+        <header>        
             <h1>Locog</h1>
+
             <div class="header-controls">
+                <span id="wsStatus" class="ws-status disconnected" title="WebSocket disconnected"></span>
                 <button class="icon-button" onclick="loadLogs()" title="Refresh logs">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                 </button>
@@ -588,7 +599,7 @@
             </div>
         </header>
 
-        <div class="mobile-filter-bar">
+        <div class="filter-row mobile-filter-bar">
             <button class="mobile-filter-toggle" onclick="toggleMobileFilters()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
                 Filters
@@ -597,14 +608,7 @@
             <button class="mobile-refresh-btn" onclick="loadLogs()">Refresh</button>
         </div>
 
-        <div class="filters">
-            <div class="filter-group">
-                <label for="level">Level:</label>
-                <select id="level">
-                    <option value="">All</option>
-                </select>
-            </div>
-
+        <div class="filter-row filters">
             <div class="filter-group">
                 <label for="host">Host:</label>
                 <select id="host">
@@ -620,12 +624,6 @@
             </div>
 
             <div class="filter-group">
-                <label for="search">Search:</label>
-                <input type="text" id="search" placeholder="Search in messages...">
-            </div>
-
-
-            <div class="filter-group">
                 <label for="startTime">Dates:</label>
                 <input type="date" id="startTime" title="Filter logs from this date onwards">
                 -
@@ -633,16 +631,18 @@
             </div>
 
             <div class="filter-group">
-                <label for="limit">Limit:</label>
-                <select id="limit">
-                    <option value="100">100</option>
-                    <option value="500" selected>500</option>
-                    <option value="1000">1000</option>
-                    <option value="5000">5000</option>
+                <label for="level">Level:</label>
+                <select id="level">
+                    <option value="">All</option>
                 </select>
             </div>
 
-            <span id="wsStatus" class="ws-status disconnected" title="WebSocket disconnected"></span>
+
+            <div class="filter-group" style="flex-grow: 2;">
+                <label for="search">Search:</label>
+                <input type="text" id="search" placeholder="Search in messages..." style="flex-grow: 2;">
+            </div>
+
         </div>
     </div>
 
