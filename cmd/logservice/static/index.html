@@ -6,6 +6,92 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <title>Locog - Log Viewer</title>
     <style>
+        :root {
+            /* Light mode colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f3f3f3;
+            --bg-tertiary: #e8e8e8;
+            --text-primary: #1e1e1e;
+            --text-secondary: #616161;
+            --text-tertiary: #8e8e8e;
+            --border-color: #d0d0d0;
+            --accent-color: #0066cc;
+            --accent-hover: #0052a3;
+            --accent-active: #003d7a;
+
+            /* Log level colors - light mode */
+            --error-color: #d32f2f;
+            --error-bg: #fdecea;
+            --error-border: #f48771;
+            --warn-color: #f57c00;
+            --warn-bg: #fff8e1;
+            --warn-border: #ffb74d;
+            --info-color: #0288d1;
+            --info-bg: #e3f2fd;
+            --info-border: #4fc3f7;
+            --debug-color: #388e3c;
+            --debug-bg: #f1f8e9;
+            --debug-border: #81c784;
+        }
+
+        [data-theme="dark"] {
+            /* Dark mode colors */
+            --bg-primary: #1e1e1e;
+            --bg-secondary: #252526;
+            --bg-tertiary: #3c3c3c;
+            --text-primary: #d4d4d4;
+            --text-secondary: #969696;
+            --text-tertiary: #858585;
+            --border-color: #3e3e42;
+            --accent-color: #0e639c;
+            --accent-hover: #1177bb;
+            --accent-active: #007acc;
+
+            /* Log level colors - dark mode */
+            --error-color: #f48771;
+            --error-bg: #2d2424;
+            --error-border: #f48771;
+            --warn-color: #cca700;
+            --warn-bg: #2d2a24;
+            --warn-border: #cca700;
+            --info-color: #4fc1ff;
+            --info-bg: #252526;
+            --info-border: #4ec9b0;
+            --debug-color: #608b4e;
+            --debug-bg: #252526;
+            --debug-border: #608b4e;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                /* Dark mode colors */
+                --bg-primary: #1e1e1e;
+                --bg-secondary: #252526;
+                --bg-tertiary: #3c3c3c;
+                --text-primary: #d4d4d4;
+                --text-secondary: #969696;
+                --text-tertiary: #858585;
+                --border-color: #3e3e42;
+                --accent-color: #0e639c;
+                --accent-hover: #1177bb;
+                --accent-active: #007acc;
+
+                /* Log level colors - dark mode */
+                --error-color: #f48771;
+                --error-bg: #2d2424;
+                --error-border: #f48771;
+                --warn-color: #cca700;
+                --warn-bg: #2d2a24;
+                --warn-border: #cca700;
+                --info-color: #4fc1ff;
+                --info-bg: #252526;
+                --info-border: #4ec9b0;
+                --debug-color: #608b4e;
+                --debug-bg: #252526;
+                --debug-border: #608b4e;
+            }
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,11 +100,12 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             height: 100vh;
             display: flex;
             flex-direction: column;
+            transition: background-color 0.2s, color 0.2s;
         }
 
         .top-bar-wrapper {
@@ -26,7 +113,7 @@
             flex-direction: row;
             width: 100%;
             flex-shrink: 0;
-            background: #252526;
+            background: var(--bg-secondary);
 
             @media (max-width: 768px) {
                 flex-direction: column;
@@ -36,24 +123,105 @@
 
         header {
             padding: 1rem;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid var(--border-color);
             flex-grow: 0;
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
         h1 {
             font-size: 1.1rem;
             font-weight: 500;
             line-height: 2.25rem;
+            flex-grow: 1;
 
             @media (max-width: 768px) {
                 line-height: 1.1rem;
             }
         }
 
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .icon-button {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .icon-button:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-color);
+        }
+
+        .icon-button svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .theme-switcher {
+            position: relative;
+        }
+
+        .theme-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 0.25rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            min-width: 120px;
+        }
+
+        .theme-menu.show {
+            display: block;
+        }
+
+        .theme-option {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: background-color 0.2s;
+        }
+
+        .theme-option:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .theme-option.active {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .theme-option svg {
+            width: 14px;
+            height: 14px;
+        }
+
         .filters {
             padding: 1rem;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             gap: 1rem;
             flex-wrap: wrap;
@@ -64,16 +232,16 @@
         .mobile-filter-bar {
             display: none;
             padding: 0.75rem 1rem;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid var(--border-color);
             align-items: center;
             gap: 0.5rem;
-            background: #252526;
+            background: var(--bg-secondary);
         }
 
         .mobile-filter-toggle {
-            background: #3c3c3c;
-            color: #d4d4d4;
-            border: 1px solid #3e3e42;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
             padding: 0.4rem 0.75rem;
             border-radius: 4px;
             cursor: pointer;
@@ -85,7 +253,8 @@
         }
 
         .mobile-filter-toggle:hover {
-            background: #4c4c4c;
+            background: var(--bg-primary);
+            border-color: var(--accent-color);
         }
 
         .mobile-filter-toggle svg {
@@ -95,7 +264,7 @@
 
         .mobile-filter-summary {
             font-size: 0.75rem;
-            color: #969696;
+            color: var(--text-secondary);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -104,7 +273,7 @@
         }
 
         .mobile-filter-summary .filter-tag {
-            background: #0e639c;
+            background: var(--accent-color);
             color: #fff;
             padding: 0.15rem 0.4rem;
             border-radius: 3px;
@@ -155,17 +324,17 @@
 
         label {
             font-size: 0.875rem;
-            color: #969696;
+            color: var(--text-secondary);
         }
 
         select, input {
-            background: #3c3c3c;
-            border: 1px solid #3e3e42;
-            color: #d4d4d4;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
             padding: 0.5rem;
             border-radius: 4px;
             font-size: 0.875rem;
-            
+
             @media (max-width: 768px) {
                 max-width: 160px;
             }
@@ -178,11 +347,11 @@
 
         select:focus, input:focus {
             outline: none;
-            border-color: #007acc;   
+            border-color: var(--accent-active);
         }
 
         button {
-            background: #0e639c;
+            background: var(--accent-color);
             color: white;
             border: none;
             padding: 0.5rem 1rem;
@@ -192,11 +361,11 @@
         }
 
         button:hover {
-            background: #1177bb;
+            background: var(--accent-hover);
         }
 
         button:active {
-            background: #007acc;
+            background: var(--accent-active);
         }
 
         .logs-container {
@@ -208,8 +377,8 @@
         .log-entry {
             margin-bottom: 0.5rem;
             padding: 0.75rem;
-            background: #252526;
-            border-left: 3px solid #3e3e42;
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--border-color);
             border-radius: 4px;
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 0.875rem;
@@ -218,25 +387,27 @@
         }
 
         .log-entry:hover {
-            background: #2a2a2b;
+            background: var(--bg-tertiary);
         }
 
         .log-entry.error {
-            border-left-color: #f48771;
-            background: #2d2424;
+            border-left-color: var(--error-border);
+            background: var(--error-bg);
         }
 
         .log-entry.warn {
-            border-left-color: #cca700;
-            background: #2d2a24;
+            border-left-color: var(--warn-border);
+            background: var(--warn-bg);
         }
 
         .log-entry.info {
-            border-left-color: #4ec9b0;
+            border-left-color: var(--info-border);
+            background: var(--info-bg);
         }
 
         .log-entry.debug {
-            border-left-color: #608b4e;
+            border-left-color: var(--debug-border);
+            background: var(--debug-bg);
         }
 
         .log-header {
@@ -247,11 +418,11 @@
         }
 
         .log-timestamp {
-            color: #858585;
+            color: var(--text-tertiary);
         }
 
         .log-service {
-            color: #4ec9b0;
+            color: var(--info-border);
         }
 
         .log-level {
@@ -259,19 +430,19 @@
         }
 
         .log-level.ERROR {
-            color: #f48771;
+            color: var(--error-color);
         }
 
         .log-level.WARN {
-            color: #cca700;
+            color: var(--warn-color);
         }
 
         .log-level.INFO {
-            color: #4fc1ff;
+            color: var(--info-color);
         }
 
         .log-level.DEBUG {
-            color: #608b4e;
+            color: var(--debug-color);
         }
 
         .log-level-icon {
@@ -282,42 +453,42 @@
         }
 
         .log-level-icon.ERROR {
-            color: #f48771;
+            color: var(--error-color);
         }
 
         .log-level-icon.WARN {
-            color: #cca700;
+            color: var(--warn-color);
         }
 
         .log-level-icon.INFO {
-            color: #4fc1ff;
+            color: var(--info-color);
         }
 
         .log-level-icon.DEBUG {
-            color: #c586c0;
+            color: var(--debug-color);
         }
 
         .log-host {
-            color: #9cdcfe;
+            color: var(--info-color);
         }
 
         .log-message {
-            color: #d4d4d4;
+            color: var(--text-primary);
             word-wrap: break-word;
         }
 
         .log-metadata {
             margin-top: 0.5rem;
             padding-top: 0.5rem;
-            border-top: 1px solid #3e3e42;
+            border-top: 1px solid var(--border-color);
             font-size: 0.75rem;
-            color: #858585;
+            color: var(--text-tertiary);
         }
 
         .log-details {
             margin-top: 0.5rem;
             padding-top: 0.5rem;
-            border-top: 1px solid #3e3e42;
+            border-top: 1px solid var(--border-color);
             display: none;
         }
 
@@ -336,13 +507,13 @@
         }
 
         .detail-key {
-            color: #4ec9b0;
+            color: var(--info-border);
             min-width: 120px;
             font-weight: 500;
         }
 
         .detail-value {
-            color: #d4d4d4;
+            color: var(--text-primary);
             overflow-wrap: break-word;
             word-break: break-word;
             min-width: 0;
@@ -353,23 +524,13 @@
             white-space: pre-wrap;
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 0.75rem;
-            color: #858585;
+            color: var(--text-tertiary);
         }
 
         .loading {
             text-align: center;
             padding: 2rem;
-            color: #858585;
-        }
-
-        .auto-refresh {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        input[type="checkbox"] {
-            width: auto;
+            color: var(--text-tertiary);
         }
 
         .ws-status {
@@ -381,11 +542,11 @@
         }
 
         .ws-status.connected {
-            background: #4ec9b0;
+            background: var(--debug-color);
         }
 
         .ws-status.disconnected {
-            background: #f48771;
+            background: var(--error-color);
         }
     </style>
 </head>
@@ -393,6 +554,38 @@
     <div class="top-bar-wrapper">
         <header>
             <h1>Locog</h1>
+            <div class="header-controls">
+                <button class="icon-button" onclick="loadLogs()" title="Refresh logs">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                </button>
+                <div class="theme-switcher">
+                    <button class="icon-button" id="themeButton" onclick="toggleThemeMenu()" title="Change theme">
+                        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </button>
+                    <div class="theme-menu" id="themeMenu">
+                        <div class="theme-option" onclick="setTheme('light')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                            </svg>
+                            Light
+                        </div>
+                        <div class="theme-option" onclick="setTheme('dark')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                            </svg>
+                            Dark
+                        </div>
+                        <div class="theme-option active" onclick="setTheme('auto')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>
+                            </svg>
+                            Auto
+                        </div>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <div class="mobile-filter-bar">
@@ -447,13 +640,6 @@
                     <option value="1000">1000</option>
                     <option value="5000">5000</option>
                 </select>
-            </div>
-
-            <button onclick="loadLogs()">Refresh</button>
-
-            <div class="auto-refresh">
-                <input type="checkbox" id="autoRefresh">
-                <label for="autoRefresh">Auto-refresh (10s)</label>
             </div>
 
             <span id="wsStatus" class="ws-status disconnected" title="WebSocket disconnected"></span>

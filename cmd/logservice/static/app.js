@@ -1,7 +1,79 @@
-let autoRefreshInterval = null;
 let ws = null;
 let wsReconnectTimeout = null;
 let currentLogs = [];
+
+// Theme management
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'auto';
+    applyTheme(savedTheme);
+    updateThemeMenuSelection(savedTheme);
+}
+
+function setTheme(theme) {
+    localStorage.setItem('theme', theme);
+    applyTheme(theme);
+    updateThemeMenuSelection(theme);
+    toggleThemeMenu();
+}
+
+function applyTheme(theme) {
+    const html = document.documentElement;
+
+    if (theme === 'light') {
+        html.setAttribute('data-theme', 'light');
+    } else if (theme === 'dark') {
+        html.setAttribute('data-theme', 'dark');
+    } else {
+        // auto mode - remove attribute to use prefers-color-scheme
+        html.removeAttribute('data-theme');
+    }
+
+    updateThemeIcon(theme);
+}
+
+function updateThemeIcon(theme) {
+    const themeIcon = document.getElementById('themeIcon');
+    if (!themeIcon) return;
+
+    if (theme === 'light') {
+        // Sun icon
+        themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+    } else if (theme === 'dark') {
+        // Moon icon
+        themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+    } else {
+        // Monitor/auto icon
+        themeIcon.innerHTML = '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>';
+    }
+}
+
+function updateThemeMenuSelection(theme) {
+    const options = document.querySelectorAll('.theme-option');
+    options.forEach(option => {
+        option.classList.remove('active');
+    });
+
+    const themeMap = { 'light': 0, 'dark': 1, 'auto': 2 };
+    const index = themeMap[theme] || 2;
+    if (options[index]) {
+        options[index].classList.add('active');
+    }
+}
+
+function toggleThemeMenu() {
+    const menu = document.getElementById('themeMenu');
+    menu.classList.toggle('show');
+}
+
+// Close theme menu when clicking outside
+document.addEventListener('click', function(e) {
+    const themeSwitcher = document.querySelector('.theme-switcher');
+    const themeMenu = document.getElementById('themeMenu');
+
+    if (themeSwitcher && !themeSwitcher.contains(e.target)) {
+        themeMenu.classList.remove('show');
+    }
+});
 
 function toggleMobileFilters() {
     const filters = document.querySelector('.filters');
@@ -220,19 +292,6 @@ function attachLogClickHandlers() {
     });
 }
 
-// Auto-refresh toggle
-document.getElementById('autoRefresh').addEventListener('change', (e) => {
-    if (e.target.checked) {
-        loadLogs(); // Load immediately
-        autoRefreshInterval = setInterval(loadLogs, 10000); // Then every 10s
-    } else {
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-            autoRefreshInterval = null;
-        }
-    }
-});
-
 // Load logs when filters change
 ['service', 'level', 'host', 'limit', 'startTime', 'endTime'].forEach(id => {
     document.getElementById(id).addEventListener('change', () => {
@@ -336,6 +395,7 @@ function updateWsStatus(connected) {
 }
 
 // Initial load
+initTheme();
 loadFilterOptions();
 loadLogs();
 connectWebSocket();
