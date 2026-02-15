@@ -1,5 +1,40 @@
 let autoRefreshInterval = null;
 
+function toggleMobileFilters() {
+    const filters = document.querySelector('.filters');
+    filters.classList.toggle('mobile-expanded');
+}
+
+function updateMobileFilterSummary() {
+    const summary = document.getElementById('mobileFilterSummary');
+    if (!summary) return;
+
+    const tags = [];
+    const level = document.getElementById('level').value;
+    const host = document.getElementById('host').value;
+    const service = document.getElementById('service').value;
+    const search = document.getElementById('search').value;
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+
+    if (level) tags.push('Level: ' + level);
+    if (host) tags.push('Host: ' + host);
+    if (service) tags.push('Service: ' + service);
+    if (search) tags.push('Search: ' + search);
+    if (startTime || endTime) {
+        const parts = [];
+        if (startTime) parts.push(startTime);
+        if (endTime) parts.push(endTime);
+        tags.push('Dates: ' + parts.join(' - '));
+    }
+
+    if (tags.length === 0) {
+        summary.textContent = 'No filters applied';
+    } else {
+        summary.innerHTML = tags.map(t => '<span class="filter-tag">' + escapeHtml(t) + '</span>').join('');
+    }
+}
+
 // Load filter options on page load
 async function loadFilterOptions() {
     try {
@@ -196,13 +231,17 @@ document.getElementById('autoRefresh').addEventListener('change', (e) => {
 
 // Load logs when filters change
 ['service', 'level', 'host', 'limit', 'startTime', 'endTime'].forEach(id => {
-    document.getElementById(id).addEventListener('change', loadLogs);
+    document.getElementById(id).addEventListener('change', () => {
+        updateMobileFilterSummary();
+        loadLogs();
+    });
 });
 
 // Search with debounce
 let searchTimeout;
 document.getElementById('search').addEventListener('input', () => {
     clearTimeout(searchTimeout);
+    updateMobileFilterSummary();
     searchTimeout = setTimeout(loadLogs, 500);
 });
 
