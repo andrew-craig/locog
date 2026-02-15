@@ -371,6 +371,22 @@
         input[type="checkbox"] {
             width: auto;
         }
+
+        .ws-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .ws-status.connected {
+            background: #4ec9b0;
+        }
+
+        .ws-status.disconnected {
+            background: #f48771;
+        }
     </style>
 </head>
 <body>
@@ -439,6 +455,8 @@
                 <input type="checkbox" id="autoRefresh">
                 <label for="autoRefresh">Auto-refresh (10s)</label>
             </div>
+
+            <span id="wsStatus" class="ws-status disconnected" title="WebSocket disconnected"></span>
         </div>
     </div>
 

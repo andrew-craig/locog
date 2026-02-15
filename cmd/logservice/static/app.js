@@ -1,4 +1,7 @@
 let autoRefreshInterval = null;
+let ws = null;
+let wsReconnectTimeout = null;
+let currentLogs = [];
 
 function toggleMobileFilters() {
     const filters = document.querySelector('.filters');
@@ -101,7 +104,8 @@ async function loadLogs() {
         const response = await fetch(`/api/logs?${params}`);
         const logs = await response.json();
 
-        displayLogs(logs);
+        currentLogs = logs || [];
+        displayLogs(currentLogs);
     } catch (error) {
         console.error('Failed to load logs:', error);
         document.getElementById('logsContainer').innerHTML =
@@ -245,6 +249,93 @@ document.getElementById('search').addEventListener('input', () => {
     searchTimeout = setTimeout(loadLogs, 500);
 });
 
+// WebSocket for real-time log streaming
+function connectWebSocket() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.host + '/api/ws';
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = function() {
+        console.log('WebSocket connected');
+        updateWsStatus(true);
+    };
+
+    ws.onmessage = function(event) {
+        try {
+            const newLogs = JSON.parse(event.data);
+            if (!Array.isArray(newLogs) || newLogs.length === 0) return;
+
+            // Check if any new logs match current filters
+            const matchingLogs = newLogs.filter(matchesCurrentFilters);
+            if (matchingLogs.length === 0) return;
+
+            // Prepend new logs (they appear newest-first)
+            currentLogs = matchingLogs.concat(currentLogs);
+
+            // Respect the limit setting
+            const limit = parseInt(document.getElementById('limit').value) || 500;
+            if (currentLogs.length > limit) {
+                currentLogs = currentLogs.slice(0, limit);
+            }
+
+            displayLogs(currentLogs);
+        } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+        }
+    };
+
+    ws.onclose = function() {
+        console.log('WebSocket disconnected, reconnecting...');
+        updateWsStatus(false);
+        ws = null;
+        // Reconnect after a delay
+        wsReconnectTimeout = setTimeout(connectWebSocket, 3000);
+    };
+
+    ws.onerror = function(err) {
+        console.error('WebSocket error:', err);
+        ws.close();
+    };
+}
+
+function matchesCurrentFilters(log) {
+    const service = document.getElementById('service').value;
+    const level = document.getElementById('level').value;
+    const host = document.getElementById('host').value;
+    const search = document.getElementById('search').value;
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+
+    if (service && log.service !== service) return false;
+    if (level && log.level.toLowerCase() !== level.toLowerCase()) return false;
+    if (host && log.host !== host) return false;
+    if (search && !log.message.toLowerCase().includes(search.toLowerCase())) return false;
+
+    if (startTime) {
+        const start = new Date(startTime + 'T00:00:00Z');
+        if (new Date(log.timestamp) < start) return false;
+    }
+    if (endTime) {
+        const end = new Date(endTime + 'T23:59:59.999Z');
+        if (new Date(log.timestamp) > end) return false;
+    }
+
+    return true;
+}
+
+function updateWsStatus(connected) {
+    const indicator = document.getElementById('wsStatus');
+    if (!indicator) return;
+    indicator.className = 'ws-status ' + (connected ? 'connected' : 'disconnected');
+    indicator.title = connected ? 'WebSocket connected - receiving real-time updates' : 'WebSocket disconnected - reconnecting...';
+}
+
 // Initial load
 loadFilterOptions();
 loadLogs();
+connectWebSocket();
