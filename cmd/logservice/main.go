@@ -32,6 +32,7 @@ var staticFiles embed.FS
 type server struct {
 	db      *db.DB
 	limiter *ipRateLimiter
+	hub     *wsHub
 }
 
 // ipRateLimiter implements per-IP rate limiting
@@ -93,7 +94,10 @@ func main() {
 	// Rate limiter: 100 requests/sec per IP with burst of 100
 	limiter := newIPRateLimiter(rate.Limit(100), 100)
 
-	srv := &server{db: database, limiter: limiter}
+	hub := newWSHub()
+	go hub.run()
+
+	srv := &server{db: database, limiter: limiter, hub: hub}
 
 	// Start cleanup routine (runs daily)
 	go srv.cleanupRoutine()
@@ -102,6 +106,9 @@ func main() {
 
 	// Ingestion endpoint (used by Vector)
 	mux.HandleFunc("/api/ingest", srv.handleIngest)
+
+	// WebSocket endpoint for real-time log streaming
+	mux.HandleFunc("/api/ws", srv.handleWebSocket)
 
 	// Query endpoints (used by Web UI)
 	mux.HandleFunc("/api/logs", srv.handleQueryLogs)
@@ -247,6 +254,11 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	// Broadcast new logs to WebSocket clients
+	if s.hub != nil {
+		s.hub.broadcastLogs(logs)
 	}
 
 	w.WriteHeader(http.StatusCreated)
