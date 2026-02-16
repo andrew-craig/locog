@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f3f3f3" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#252526" media="(prefers-color-scheme: dark)">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <title>Locog - Log Viewer</title>
     <style>
@@ -122,8 +124,7 @@
         }
 
         header {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1rem;
             flex-grow: 0;
             flex-shrink: 0;
             display: flex;
@@ -231,7 +232,7 @@
 
         .mobile-filter-bar {
             display: none;
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 1rem;
             border-bottom: 1px solid var(--border-color);
             align-items: center;
             gap: 0.5rem;
@@ -281,11 +282,6 @@
             font-size: 0.7rem;
         }
 
-        .mobile-refresh-btn {
-            flex-shrink: 0;
-        }
-
-        
 
         .filter-group {
             display: flex;
@@ -546,15 +542,22 @@
                 width: 100%;
             }
 
+            .filters .filter-group label {
+                width: 70px;
+                flex-shrink: 0;
+            }
+
             .filters .filter-group select,
             .filters .filter-group input[type="text"] {
                 flex: 1;
                 max-width: none;
+                font-size: 16px; /* Prevent zoom on iOS Safari */
             }
 
             .filters .filter-group input[type="date"] {
                 flex: 1;
                 max-width: none;
+                font-size: 16px; /* Prevent zoom on iOS Safari */
             }
         }
     </style>
@@ -605,7 +608,6 @@
                 Filters
             </button>
             <span class="mobile-filter-summary" id="mobileFilterSummary">No filters applied</span>
-            <button class="mobile-refresh-btn" onclick="loadLogs()">Refresh</button>
         </div>
 
         <div class="filter-row filters">
