@@ -290,8 +290,6 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            flex-grow: 1;
-            flex-shrink: 0;
         }
 
         label {
@@ -313,8 +311,8 @@
         }
 
         .filter-group input, .filter-group select {
-            flex-grow: 1;
-            flex-shrink: 0;
+            flex: 1 1 auto;
+            min-width: 0;
         }
 
         select {
@@ -529,6 +527,7 @@
         @media (max-width: 768px) {
             .mobile-filter-bar {
                 display: flex;
+                justify-content: space-between;
             }
 
             .filters {
@@ -606,11 +605,12 @@
         </header>
 
         <div class="filter-row mobile-filter-bar">
+            <span class="mobile-filter-summary" id="mobileFilterSummary">No filters applied</span>
             <button class="mobile-filter-toggle" onclick="toggleMobileFilters()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
                 Filters
             </button>
-            <span class="mobile-filter-summary" id="mobileFilterSummary">No filters applied</span>
+
         </div>
 
         <div class="filter-row filters">
@@ -643,9 +643,9 @@
             </div>
 
 
-            <div class="filter-group" style="flex-grow: 2;">
+            <div class="filter-group" style="flex: 1 1 auto;">
                 <label for="search">Search:</label>
-                <input type="text" id="search" placeholder="Search in messages..." style="flex-grow: 2;">
+                <input type="text" id="search" placeholder="Search in messages...">
             </div>
 
         </div>
