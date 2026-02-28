@@ -32,23 +32,14 @@ type DB struct {
 }
 
 func New(dbPath string) (*DB, error) {
-	conn, err := sql.Open("sqlite3", dbPath)
+	// Configure pragmas via DSN so they apply to ALL connections created by
+	// the pool, not just the first one. Without this, new pool connections
+	// default to busy_timeout=0 and fail immediately on lock contention.
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=-64000"
+
+	conn, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
-	}
-
-	// Set pragmas for better performance
-	pragmas := []string{
-		"PRAGMA journal_mode=WAL",      // Write-Ahead Logging for better concurrency
-		"PRAGMA synchronous=NORMAL",    // Faster writes, still safe
-		"PRAGMA cache_size=-64000",     // 64MB cache
-		"PRAGMA busy_timeout=5000",     // Wait 5s on lock
-	}
-
-	for _, pragma := range pragmas {
-		if _, err := conn.Exec(pragma); err != nil {
-			return nil, fmt.Errorf("failed to set pragma: %w", err)
-		}
 	}
 
 	// Initialize schema
