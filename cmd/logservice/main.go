@@ -312,11 +312,17 @@ func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
 	options, err := s.db.GetFilterOptions(r.Context())
+	duration := time.Since(start)
 	if err != nil {
-		slog.Error("failed to get filter options", "error", err)
+		slog.Error("failed to get filter options", "error", err, "duration_ms", duration.Milliseconds())
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
+	}
+
+	if duration > 500*time.Millisecond {
+		slog.Warn("slow filter options response", "duration_ms", duration.Milliseconds())
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -341,11 +347,14 @@ func (s *server) runCleanup() {
 	defer cancel()
 
 	// Delete logs older than 30 days
+	start := time.Now()
+	slog.Info("starting log cleanup")
 	deleted, err := s.db.DeleteOldLogs(ctx, 30*24*time.Hour)
+	duration := time.Since(start)
 	if err != nil {
-		slog.Error("cleanup failed", "error", err)
-	} else if deleted > 0 {
-		slog.Info("cleaned up old logs", "deleted", deleted)
+		slog.Error("cleanup failed", "error", err, "duration_ms", duration.Milliseconds())
+	} else {
+		slog.Info("log cleanup completed", "deleted", deleted, "duration_ms", duration.Milliseconds())
 	}
 }
 
