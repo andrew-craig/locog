@@ -114,6 +114,9 @@ function updateMobileFilterSummary() {
 async function loadFilterOptions() {
     try {
         const response = await fetch('/api/filters');
+        if (!response.ok) {
+            throw new Error('Server returned ' + response.status);
+        }
         const options = await response.json();
 
         populateSelect('service', options.services);
@@ -121,6 +124,7 @@ async function loadFilterOptions() {
         populateSelect('host', options.hosts);
     } catch (error) {
         console.error('Failed to load filter options:', error);
+        setTimeout(loadFilterOptions, 3000);
     }
 }
 
