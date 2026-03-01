@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -186,33 +187,47 @@ func (db *DB) GetFilterOptions(ctx context.Context) (models.FilterOptions, error
 	if time.Now().Before(db.filterCache.expires) {
 		options := db.filterCache.options
 		db.filterCache.mu.RUnlock()
+		slog.Debug("filter options served from cache")
 		return options, nil
 	}
 	db.filterCache.mu.RUnlock()
 
 	// Cache miss or expired - fetch from database
+	totalStart := time.Now()
 	var options models.FilterOptions
 
 	// Get distinct services
+	queryStart := time.Now()
 	services, err := db.getDistinctValues(ctx, "service")
 	if err != nil {
+		slog.Error("filter query failed", "column", "service", "duration_ms", time.Since(queryStart).Milliseconds(), "error", err)
 		return options, err
 	}
+	slog.Info("filter query completed", "column", "service", "count", len(services), "duration_ms", time.Since(queryStart).Milliseconds())
 	options.Services = services
 
 	// Get distinct levels
+	queryStart = time.Now()
 	levels, err := db.getDistinctValues(ctx, "level")
 	if err != nil {
+		slog.Error("filter query failed", "column", "level", "duration_ms", time.Since(queryStart).Milliseconds(), "error", err)
 		return options, err
 	}
+	slog.Info("filter query completed", "column", "level", "count", len(levels), "duration_ms", time.Since(queryStart).Milliseconds())
 	options.Levels = levels
 
 	// Get distinct hosts
+	queryStart = time.Now()
 	hosts, err := db.getDistinctValues(ctx, "host")
 	if err != nil {
+		slog.Error("filter query failed", "column", "host", "duration_ms", time.Since(queryStart).Milliseconds(), "error", err)
 		return options, err
 	}
+	slog.Info("filter query completed", "column", "host", "count", len(hosts), "duration_ms", time.Since(queryStart).Milliseconds())
 	options.Hosts = hosts
+
+	slog.Info("filter options fetched from database", "total_duration_ms", time.Since(totalStart).Milliseconds(),
+		"services", len(services), "levels", len(levels), "hosts", len(hosts))
 
 	// Update cache
 	db.filterCache.mu.Lock()
