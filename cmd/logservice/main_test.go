@@ -760,3 +760,155 @@ func TestIPRateLimiter_Allow(t *testing.T) {
 		t.Error("second immediate request should be denied")
 	}
 }
+
+// TestHandleQueryLogs_InvalidStartDate tests that an invalid start date returns a 400 JSON error.
+func TestHandleQueryLogs_InvalidStartDate(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logs?start=not-a-date", nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	var errResp apiError
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+	}
+	if errResp.Code != "invalid_date" {
+		t.Errorf("expected code 'invalid_date', got '%s'", errResp.Code)
+	}
+}
+
+// TestHandleQueryLogs_InvalidEndDate tests that an invalid end date returns a 400 JSON error.
+func TestHandleQueryLogs_InvalidEndDate(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logs?end=not-a-date", nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	var errResp apiError
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+	}
+	if errResp.Code != "invalid_date" {
+		t.Errorf("expected code 'invalid_date', got '%s'", errResp.Code)
+	}
+}
+
+// TestHandleQueryLogs_InvalidLimit tests that a non-integer limit returns a 400 JSON error.
+func TestHandleQueryLogs_InvalidLimit(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logs?limit=abc", nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	var errResp apiError
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+	}
+	if errResp.Code != "invalid_limit" {
+		t.Errorf("expected code 'invalid_limit', got '%s'", errResp.Code)
+	}
+}
+
+// TestHandleQueryLogs_NegativeLimit tests that a negative limit returns a 400 JSON error.
+func TestHandleQueryLogs_NegativeLimit(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logs?limit=-5", nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	var errResp apiError
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+	}
+	if errResp.Code != "invalid_limit" {
+		t.Errorf("expected code 'invalid_limit', got '%s'", errResp.Code)
+	}
+}
+
+// TestHandleQueryLogs_StartAfterEnd tests that start > end returns a 400 JSON error.
+func TestHandleQueryLogs_StartAfterEnd(t *testing.T) {
+	srv := newTestServer(t)
+
+	url := "/api/logs?start=2025-01-20T00:00:00Z&end=2025-01-10T00:00:00Z"
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	var errResp apiError
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+	}
+	if errResp.Code != "date_range_invalid" {
+		t.Errorf("expected code 'date_range_invalid', got '%s'", errResp.Code)
+	}
+}
+
+// TestHandleQueryLogs_RetentionWarningHeader tests that queries outside the retention window include a warning header.
+func TestHandleQueryLogs_RetentionWarningHeader(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Query with end date 60 days in the past (entirely outside 30-day retention)
+	old := time.Now().Add(-60 * 24 * time.Hour).Format(time.RFC3339)
+	url := "/api/logs?end=" + old
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	warning := rr.Header().Get("X-Locog-Warning")
+	if warning == "" {
+		t.Error("expected X-Locog-Warning header for query outside retention window")
+	}
+	if !strings.Contains(warning, "retention") {
+		t.Errorf("expected warning to mention retention, got: %s", warning)
+	}
+}
+
+// TestHandleQueryLogs_NoWarningInRetentionWindow tests that queries within the retention window have no warning header.
+func TestHandleQueryLogs_NoWarningInRetentionWindow(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Query with recent dates (within 30-day retention)
+	start := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+	end := time.Now().Format(time.RFC3339)
+	url := "/api/logs?start=" + start + "&end=" + end
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rr := httptest.NewRecorder()
+	srv.handleQueryLogs(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	warning := rr.Header().Get("X-Locog-Warning")
+	if warning != "" {
+		t.Errorf("expected no X-Locog-Warning header for query within retention window, got: %s", warning)
+	}
+}

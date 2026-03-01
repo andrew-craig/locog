@@ -264,6 +264,22 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// apiError is a structured JSON error response for API endpoints.
+type apiError struct {
+	Error   string `json:"error"`
+	Code    string `json:"code"`
+	Details string `json:"details,omitempty"`
+}
+
+func writeJSONError(w http.ResponseWriter, status int, code, message, details string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(apiError{Error: message, Code: code, Details: details})
+}
+
+// retentionPeriod is the log retention window used for query warnings.
+const retentionPeriod = 30 * 24 * time.Hour
+
 func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -277,28 +293,80 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 		Search:  r.URL.Query().Get("search"),
 	}
 
-	if limit := r.URL.Query().Get("limit"); limit != "" {
-		filter.Limit, _ = strconv.Atoi(limit)
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			slog.Warn("invalid limit", "limit", limitStr, "error", err)
+			writeJSONError(w, http.StatusBadRequest, "invalid_limit",
+				"Invalid limit value",
+				fmt.Sprintf("'limit' must be a positive integer, got: %s", limitStr))
+			return
+		}
+		if limit < 0 {
+			slog.Warn("negative limit", "limit", limit)
+			writeJSONError(w, http.StatusBadRequest, "invalid_limit",
+				"Invalid limit value", "limit must not be negative")
+			return
+		}
+		filter.Limit = limit
 	}
 
 	if start := r.URL.Query().Get("start"); start != "" {
 		t, err := time.Parse(time.RFC3339, start)
-		if err == nil {
-			filter.StartTime = &t
+		if err != nil {
+			slog.Warn("invalid start date", "start", start, "error", err)
+			writeJSONError(w, http.StatusBadRequest, "invalid_date",
+				"Invalid start date format",
+				fmt.Sprintf("'start' must be RFC3339 (e.g. 2025-01-15T00:00:00Z), got: %s", start))
+			return
 		}
+		filter.StartTime = &t
 	}
 
 	if end := r.URL.Query().Get("end"); end != "" {
 		t, err := time.Parse(time.RFC3339, end)
-		if err == nil {
-			filter.EndTime = &t
+		if err != nil {
+			slog.Warn("invalid end date", "end", end, "error", err)
+			writeJSONError(w, http.StatusBadRequest, "invalid_date",
+				"Invalid end date format",
+				fmt.Sprintf("'end' must be RFC3339 (e.g. 2025-01-15T23:59:59Z), got: %s", end))
+			return
 		}
+		filter.EndTime = &t
+	}
+
+	if filter.StartTime != nil && filter.EndTime != nil && filter.StartTime.After(*filter.EndTime) {
+		slog.Warn("start date after end date",
+			"start", filter.StartTime.Format(time.RFC3339),
+			"end", filter.EndTime.Format(time.RFC3339))
+		writeJSONError(w, http.StatusBadRequest, "date_range_invalid",
+			"Start date must be before end date",
+			fmt.Sprintf("start (%s) is after end (%s)",
+				filter.StartTime.Format(time.RFC3339), filter.EndTime.Format(time.RFC3339)))
+		return
+	}
+
+	// Warn when query falls outside the retention window
+	retentionCutoff := time.Now().Add(-retentionPeriod)
+	if filter.EndTime != nil && filter.EndTime.Before(retentionCutoff) {
+		w.Header().Set("X-Locog-Warning", "Query end date is beyond the 30-day retention window. Logs older than 30 days are automatically deleted.")
+		slog.Info("query entirely outside retention window",
+			"end", filter.EndTime.Format(time.RFC3339),
+			"retention_cutoff", retentionCutoff.Format(time.RFC3339))
+	} else if filter.StartTime != nil && filter.StartTime.Before(retentionCutoff) {
+		w.Header().Set("X-Locog-Warning", fmt.Sprintf(
+			"Query start date is beyond the 30-day retention window. Results will only include logs from %s onwards.",
+			retentionCutoff.Format("2006-01-02")))
+		slog.Info("query partially outside retention window",
+			"start", filter.StartTime.Format(time.RFC3339),
+			"retention_cutoff", retentionCutoff.Format(time.RFC3339))
 	}
 
 	logs, err := s.db.QueryLogs(r.Context(), filter)
 	if err != nil {
 		slog.Error("query failed", "error", err, "filter", filter)
-		http.Error(w, "Query failed", http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "query_failed",
+			"Query failed", "An internal error occurred while querying logs")
 		return
 	}
 
