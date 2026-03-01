@@ -176,6 +176,29 @@ async function loadLogs() {
 
     try {
         const response = await fetch(`/api/logs?${params}`);
+
+        // Check for retention window warning
+        const warning = response.headers.get('X-Locog-Warning');
+        if (warning) {
+            showWarningBanner(warning);
+        } else {
+            hideWarningBanner();
+        }
+
+        if (!response.ok) {
+            let errorMessage = 'Server returned ' + response.status;
+            try {
+                const errorBody = await response.json();
+                errorMessage = errorBody.error || errorMessage;
+                if (errorBody.details) {
+                    errorMessage += ': ' + errorBody.details;
+                }
+            } catch (e) {
+                // Response was not JSON, use status text
+            }
+            throw new Error(errorMessage);
+        }
+
         const logs = await response.json();
 
         currentLogs = logs || [];
@@ -183,7 +206,7 @@ async function loadLogs() {
     } catch (error) {
         console.error('Failed to load logs:', error);
         document.getElementById('logsContainer').innerHTML =
-            '<div class="loading">Error loading logs</div>';
+            '<div class="loading">Error: ' + escapeHtml(error.message) + '</div>';
     }
 }
 
@@ -277,6 +300,26 @@ function displayLogs(logs) {
 
     // Add click handlers to toggle expansion
     attachLogClickHandlers();
+}
+
+function showWarningBanner(message) {
+    let banner = document.getElementById('warningBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'warningBanner';
+        banner.className = 'warning-banner';
+        const container = document.getElementById('logsContainer');
+        container.parentNode.insertBefore(banner, container);
+    }
+    banner.textContent = message;
+    banner.style.display = 'block';
+}
+
+function hideWarningBanner() {
+    const banner = document.getElementById('warningBanner');
+    if (banner) {
+        banner.style.display = 'none';
+    }
 }
 
 function escapeHtml(text) {
