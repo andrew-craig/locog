@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -873,7 +874,7 @@ func TestHandleQueryLogs_RetentionWarningHeader(t *testing.T) {
 
 	// Query with end date 60 days in the past (entirely outside 30-day retention)
 	old := time.Now().Add(-60 * 24 * time.Hour).Format(time.RFC3339)
-	url := "/api/logs?end=" + old
+	url := "/api/logs?end=" + url.QueryEscape(old)
 	req := httptest.NewRequest(http.MethodGet, url, nil)
 	rr := httptest.NewRecorder()
 	srv.handleQueryLogs(rr, req)
@@ -898,7 +899,7 @@ func TestHandleQueryLogs_NoWarningInRetentionWindow(t *testing.T) {
 	// Query with recent dates (within 30-day retention)
 	start := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
 	end := time.Now().Format(time.RFC3339)
-	url := "/api/logs?start=" + start + "&end=" + end
+	url := "/api/logs?start=" + url.QueryEscape(start) + "&end=" + url.QueryEscape(end)
 	req := httptest.NewRequest(http.MethodGet, url, nil)
 	rr := httptest.NewRecorder()
 	srv.handleQueryLogs(rr, req)

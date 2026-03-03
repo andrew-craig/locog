@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"sync"
 	"time"
@@ -40,12 +39,12 @@ func New(dbPath string) (*DB, error) {
 
 	conn, err := sql.Open("sqlite3", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open database %q: %w", dbPath, err)
 	}
 
 	// Initialize schema
 	if err := initSchema(conn); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	return &DB{conn: conn}, nil
@@ -62,7 +61,7 @@ func (db *DB) InsertLog(ctx context.Context, log *models.Log) error {
 		var err error
 		metadataJSON, err = json.Marshal(log.Metadata)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to marshal metadata for service=%s: %w", log.Service, err)
 		}
 	}
 
@@ -71,13 +70,16 @@ func (db *DB) InsertLog(ctx context.Context, log *models.Log) error {
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		log.Timestamp, log.Service, log.Level, log.Message, metadataJSON, log.Host,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("insert failed for service=%s level=%s host=%s: %w", log.Service, log.Level, log.Host, err)
+	}
+	return nil
 }
 
 func (db *DB) InsertBatch(ctx context.Context, logs []models.Log) error {
 	tx, err := db.conn.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to begin transaction for batch of %d logs: %w", len(logs), err)
 	}
 	defer tx.Rollback()
 
@@ -85,17 +87,23 @@ func (db *DB) InsertBatch(ctx context.Context, logs []models.Log) error {
 		INSERT INTO logs (timestamp, service, level, message, metadata, host)
 		VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to prepare batch insert statement: %w", err)
 	}
 	defer stmt.Close()
 
-	for _, logEntry := range logs {
+	for i, logEntry := range logs {
 		var metadataJSON []byte
 		if logEntry.Metadata != nil {
 			var marshalErr error
 			metadataJSON, marshalErr = json.Marshal(logEntry.Metadata)
 			if marshalErr != nil {
-				log.Printf("Failed to marshal metadata for log (service=%s): %v", logEntry.Service, marshalErr)
+				slog.Warn("skipping metadata due to marshal failure",
+					"service", logEntry.Service,
+					"host", logEntry.Host,
+					"index", i,
+					"batch_size", len(logs),
+					"error", marshalErr,
+				)
 				// Continue with nil metadata rather than failing the entire batch
 				metadataJSON = nil
 			}
@@ -104,11 +112,15 @@ func (db *DB) InsertBatch(ctx context.Context, logs []models.Log) error {
 		_, err = stmt.ExecContext(ctx, logEntry.Timestamp, logEntry.Service, logEntry.Level,
 			logEntry.Message, metadataJSON, logEntry.Host)
 		if err != nil {
-			return err
+			return fmt.Errorf("insert failed at index %d/%d (service=%s level=%s host=%s): %w",
+				i, len(logs), logEntry.Service, logEntry.Level, logEntry.Host, err)
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch of %d logs: %w", len(logs), err)
+	}
+	return nil
 }
 
 func (db *DB) QueryLogs(ctx context.Context, filter models.LogFilter) ([]models.Log, error) {
@@ -152,30 +164,37 @@ func (db *DB) QueryLogs(ctx context.Context, filter models.LogFilter) ([]models.
 
 	rows, err := db.conn.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query failed (service=%q level=%q host=%q search=%q limit=%d): %w",
+			filter.Service, filter.Level, filter.Host, filter.Search, limit, err)
 	}
 	defer rows.Close()
 
 	var logs []models.Log
 	for rows.Next() {
-		var log models.Log
+		var logEntry models.Log
 		var metadataJSON []byte
 
-		err := rows.Scan(&log.ID, &log.Timestamp, &log.Service, &log.Level,
-			&log.Message, &metadataJSON, &log.Host, &log.CreatedAt)
+		err := rows.Scan(&logEntry.ID, &logEntry.Timestamp, &logEntry.Service, &logEntry.Level,
+			&logEntry.Message, &metadataJSON, &logEntry.Host, &logEntry.CreatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan log row: %w", err)
 		}
 
 		if len(metadataJSON) > 0 {
-			json.Unmarshal(metadataJSON, &log.Metadata)
+			if unmarshalErr := json.Unmarshal(metadataJSON, &logEntry.Metadata); unmarshalErr != nil {
+				slog.Warn("failed to unmarshal log metadata",
+					"log_id", logEntry.ID,
+					"service", logEntry.Service,
+					"error", unmarshalErr,
+				)
+			}
 		}
 
-		logs = append(logs, log)
+		logs = append(logs, logEntry)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error iterating log rows: %w", err)
 	}
 
 	return logs, nil
@@ -257,7 +276,7 @@ func (db *DB) getDistinctValues(ctx context.Context, column string) ([]string, e
 		column, column, column)
 	rows, err := db.conn.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query distinct %s values: %w", column, err)
 	}
 	defer rows.Close()
 
@@ -265,13 +284,13 @@ func (db *DB) getDistinctValues(ctx context.Context, column string) ([]string, e
 	for rows.Next() {
 		var val string
 		if err := rows.Scan(&val); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan distinct %s value: %w", column, err)
 		}
 		values = append(values, val)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error iterating distinct %s rows: %w", column, err)
 	}
 
 	return values, nil
@@ -281,9 +300,13 @@ func (db *DB) DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64
 	cutoff := time.Now().Add(-olderThan)
 	result, err := db.conn.ExecContext(ctx, "DELETE FROM logs WHERE timestamp < ?", cutoff)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to delete logs older than %s: %w", cutoff.Format(time.RFC3339), err)
 	}
-	return result.RowsAffected()
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get deleted row count: %w", err)
+	}
+	return affected, nil
 }
 
 func (db *DB) Close() error {

@@ -195,7 +195,12 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// Read the body
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Failed to read body or body too large", http.StatusBadRequest)
+		slog.Warn("failed to read ingest request body",
+			"sender", ip,
+			"content_length", r.Header.Get("Content-Length"),
+			"error", err,
+		)
+		http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
 		return
 	}
 
@@ -207,7 +212,17 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		// If that fails, try single log
 		var singleLog models.Log
 		if err := json.Unmarshal(bodyBytes, &singleLog); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			bodyPreview := string(bodyBytes)
+			if len(bodyPreview) > 200 {
+				bodyPreview = bodyPreview[:200] + "... (truncated)"
+			}
+			slog.Warn("failed to parse ingest request JSON",
+				"sender", ip,
+				"content_length", len(bodyBytes),
+				"body_preview", bodyPreview,
+				"error", err,
+			)
+			http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 			return
 		}
 		logs = []models.Log{singleLog}
@@ -244,14 +259,37 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// Batch insert for better performance
 	if len(logs) > 1 {
 		if err := s.db.InsertBatch(r.Context(), logs); err != nil {
-			slog.Error("failed to insert batch", "error", err, "count", len(logs))
-			http.Error(w, "Internal error", http.StatusInternalServerError)
+			// Collect distinct services for diagnostic context
+			serviceSet := make(map[string]struct{})
+			for _, l := range logs {
+				serviceSet[l.Service] = struct{}{}
+			}
+			services := make([]string, 0, len(serviceSet))
+			for s := range serviceSet {
+				services = append(services, s)
+			}
+			slog.Error("failed to insert batch",
+				"error", err,
+				"sender", ip,
+				"count", len(logs),
+				"services", services,
+				"first_timestamp", logs[0].Timestamp.Format(time.RFC3339),
+				"last_timestamp", logs[len(logs)-1].Timestamp.Format(time.RFC3339),
+			)
+			http.Error(w, "Failed to store logs, please retry", http.StatusInternalServerError)
 			return
 		}
 	} else if len(logs) == 1 {
 		if err := s.db.InsertLog(r.Context(), &logs[0]); err != nil {
-			slog.Error("failed to insert log", "error", err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
+			slog.Error("failed to insert log",
+				"error", err,
+				"sender", ip,
+				"service", logs[0].Service,
+				"level", logs[0].Level,
+				"host", logs[0].Host,
+				"timestamp", logs[0].Timestamp.Format(time.RFC3339),
+			)
+			http.Error(w, "Failed to store log, please retry", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -364,7 +402,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := s.db.QueryLogs(r.Context(), filter)
 	if err != nil {
-		slog.Error("query failed", "error", err, "filter", filter)
+		slog.Error("query failed", "error", err, "sender", getClientIP(r), "filter", filter)
 		writeJSONError(w, http.StatusInternalServerError, "query_failed",
 			"Query failed", "An internal error occurred while querying logs")
 		return
@@ -384,8 +422,8 @@ func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
 	options, err := s.db.GetFilterOptions(r.Context())
 	duration := time.Since(start)
 	if err != nil {
-		slog.Error("failed to get filter options", "error", err, "duration_ms", duration.Milliseconds())
-		http.Error(w, "Internal error", http.StatusInternalServerError)
+		slog.Error("failed to get filter options", "error", err, "sender", getClientIP(r), "duration_ms", duration.Milliseconds())
+		http.Error(w, "Failed to load filter options", http.StatusInternalServerError)
 		return
 	}
 
