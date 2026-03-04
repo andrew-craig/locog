@@ -123,7 +123,7 @@ func main() {
 	// Serve embedded static files (Web UI)
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		slog.Error("failed to create static file system", "error", err)
+		slog.Error("failed to create static file system: " + fmt.Sprintf("%v", err))
 		os.Exit(1)
 	}
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
@@ -144,13 +144,13 @@ func main() {
 		defer cancel()
 
 		if err := httpServer.Shutdown(ctx); err != nil {
-			slog.Error("http server shutdown error", "error", err)
+			slog.Error("http server shutdown error: " + fmt.Sprintf("%v", err))
 		}
 	}()
 
 	slog.Info("log service starting", "addr", *addr)
 	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
-		slog.Error("http server error", "error", err)
+		slog.Error("http server error: " + fmt.Sprintf("%v", err))
 		os.Exit(1)
 	}
 	slog.Info("server stopped")
@@ -195,11 +195,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// Read the body
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		slog.Warn("failed to read ingest request body",
-			"sender", ip,
-			"content_length", r.Header.Get("Content-Length"),
-			"error", err,
-		)
+		slog.Warn("failed to read ingest request body: " + fmt.Sprintf("%v", err))
 		http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -216,12 +212,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 			if len(bodyPreview) > 200 {
 				bodyPreview = bodyPreview[:200] + "... (truncated)"
 			}
-			slog.Warn("failed to parse ingest request JSON",
-				"sender", ip,
-				"content_length", len(bodyBytes),
-				"body_preview", bodyPreview,
-				"error", err,
-			)
+			slog.Warn("failed to parse ingest request JSON: " + fmt.Sprintf("%v", err))
 			http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 			return
 		}
@@ -244,13 +235,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 				logBody = logBody[:500] + "... (truncated)"
 			}
 
-			slog.Warn("invalid log entry",
-				"sender", ip,
-				"index", i,
-				"total_logs", len(logs),
-				"reason", err.Error(),
-				"log_body", logBody,
-			)
+			slog.Warn("invalid log entry: " + fmt.Sprintf("%v", err.Error()))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -268,8 +253,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 			for s := range serviceSet {
 				services = append(services, s)
 			}
-			slog.Error("failed to insert batch",
-				"error", err,
+			slog.Error("failed to insert batch: "+fmt.Sprintf("%v", err),
 				"sender", ip,
 				"count", len(logs),
 				"services", services,
@@ -281,8 +265,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if len(logs) == 1 {
 		if err := s.db.InsertLog(r.Context(), &logs[0]); err != nil {
-			slog.Error("failed to insert log",
-				"error", err,
+			slog.Error("failed to insert log: "+fmt.Sprintf("%v", err),
 				"sender", ip,
 				"service", logs[0].Service,
 				"level", logs[0].Level,
@@ -334,7 +317,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil {
-			slog.Warn("invalid limit", "limit", limitStr, "error", err)
+			slog.Warn("invalid limit: "+fmt.Sprintf("%v", err), "limit", limitStr)
 			writeJSONError(w, http.StatusBadRequest, "invalid_limit",
 				"Invalid limit value",
 				fmt.Sprintf("'limit' must be a positive integer, got: %s", limitStr))
@@ -352,7 +335,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	if start := r.URL.Query().Get("start"); start != "" {
 		t, err := time.Parse(time.RFC3339, start)
 		if err != nil {
-			slog.Warn("invalid start date", "start", start, "error", err)
+			slog.Warn("invalid start date: "+fmt.Sprintf("%v", err), "start", start)
 			writeJSONError(w, http.StatusBadRequest, "invalid_date",
 				"Invalid start date format",
 				fmt.Sprintf("'start' must be RFC3339 (e.g. 2025-01-15T00:00:00Z), got: %s", start))
@@ -364,7 +347,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	if end := r.URL.Query().Get("end"); end != "" {
 		t, err := time.Parse(time.RFC3339, end)
 		if err != nil {
-			slog.Warn("invalid end date", "end", end, "error", err)
+			slog.Warn("invalid end date: "+fmt.Sprintf("%v", err), "end", end)
 			writeJSONError(w, http.StatusBadRequest, "invalid_date",
 				"Invalid end date format",
 				fmt.Sprintf("'end' must be RFC3339 (e.g. 2025-01-15T23:59:59Z), got: %s", end))
@@ -402,7 +385,7 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := s.db.QueryLogs(r.Context(), filter)
 	if err != nil {
-		slog.Error("query failed", "error", err, "sender", getClientIP(r), "filter", filter)
+		slog.Error("query failed: "+fmt.Sprintf("%v", err), "sender", getClientIP(r), "filter", filter)
 		writeJSONError(w, http.StatusInternalServerError, "query_failed",
 			"Query failed", "An internal error occurred while querying logs")
 		return
@@ -422,7 +405,7 @@ func (s *server) handleGetFilters(w http.ResponseWriter, r *http.Request) {
 	options, err := s.db.GetFilterOptions(r.Context())
 	duration := time.Since(start)
 	if err != nil {
-		slog.Error("failed to get filter options", "error", err, "sender", getClientIP(r), "duration_ms", duration.Milliseconds())
+		slog.Error("failed to get filter options: "+fmt.Sprintf("%v", err), "sender", getClientIP(r), "duration_ms", duration.Milliseconds())
 		http.Error(w, "Failed to load filter options", http.StatusInternalServerError)
 		return
 	}
@@ -458,7 +441,7 @@ func (s *server) runCleanup() {
 	deleted, err := s.db.DeleteOldLogs(ctx, 30*24*time.Hour)
 	duration := time.Since(start)
 	if err != nil {
-		slog.Error("cleanup failed", "error", err, "duration_ms", duration.Milliseconds())
+		slog.Error("cleanup failed: "+fmt.Sprintf("%v", err), "error", err, "duration_ms", duration.Milliseconds())
 	} else {
 		slog.Info("log cleanup completed", "deleted", deleted, "duration_ms", duration.Milliseconds())
 	}

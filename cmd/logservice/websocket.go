@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -94,7 +95,7 @@ func (h *wsHub) clientCount() int {
 func (h *wsHub) broadcastLogs(logs []models.Log) {
 	data, err := json.Marshal(logs)
 	if err != nil {
-		slog.Error("failed to marshal logs for websocket broadcast", "error", err, "log_count", len(logs))
+		slog.Error("failed to marshal logs for websocket broadcast: "+fmt.Sprintf("%v", err), "log_count", len(logs))
 		return
 	}
 	h.broadcast <- data
@@ -166,7 +167,7 @@ func (c *wsClient) writePump() {
 func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Error("websocket upgrade failed", "error", err, "sender", getClientIP(r))
+		slog.Error("websocket upgrade failed: "+fmt.Sprintf("%v", err), "sender", getClientIP(r))
 		return
 	}
 
