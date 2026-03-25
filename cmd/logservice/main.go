@@ -298,8 +298,8 @@ func writeJSONError(w http.ResponseWriter, status int, code, message, details st
 	json.NewEncoder(w).Encode(apiError{Error: message, Code: code, Details: details})
 }
 
-// retentionPeriod is the log retention window used for query warnings.
-const retentionPeriod = 30 * 24 * time.Hour
+// retentionPeriod is the log retention window used for cleanup and query warnings.
+const retentionPeriod = 7 * 24 * time.Hour
 
 func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -370,13 +370,13 @@ func (s *server) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	// Warn when query falls outside the retention window
 	retentionCutoff := time.Now().Add(-retentionPeriod)
 	if filter.EndTime != nil && filter.EndTime.Before(retentionCutoff) {
-		w.Header().Set("X-Locog-Warning", "Query end date is beyond the 30-day retention window. Logs older than 30 days are automatically deleted.")
+		w.Header().Set("X-Locog-Warning", "Query end date is beyond the 7-day retention window. Logs older than 7 days are automatically deleted.")
 		slog.Info("query entirely outside retention window",
 			"end", filter.EndTime.Format(time.RFC3339),
 			"retention_cutoff", retentionCutoff.Format(time.RFC3339))
 	} else if filter.StartTime != nil && filter.StartTime.Before(retentionCutoff) {
 		w.Header().Set("X-Locog-Warning", fmt.Sprintf(
-			"Query start date is beyond the 30-day retention window. Results will only include logs from %s onwards.",
+			"Query start date is beyond the 7-day retention window. Results will only include logs from %s onwards.",
 			retentionCutoff.Format("2006-01-02")))
 		slog.Info("query partially outside retention window",
 			"start", filter.StartTime.Format(time.RFC3339),
@@ -435,10 +435,10 @@ func (s *server) runCleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// Delete logs older than 30 days
+	// Delete logs older than the retention period
 	start := time.Now()
 	slog.Info("starting log cleanup")
-	deleted, err := s.db.DeleteOldLogs(ctx, 30*24*time.Hour)
+	deleted, err := s.db.DeleteOldLogs(ctx, retentionPeriod)
 	duration := time.Since(start)
 	if err != nil {
 		slog.Error("cleanup failed: "+fmt.Sprintf("%v", err), "error", err, "duration_ms", duration.Milliseconds())

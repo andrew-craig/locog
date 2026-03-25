@@ -154,7 +154,7 @@ sequenceDiagram
     end
 
     opt Cleanup routine (daily)
-        API->>DB: DeleteOldLogs(30 days)
+        API->>DB: DeleteOldLogs(7 days)
         DB->>SQLite: DELETE FROM logs<br/>WHERE timestamp < cutoff
         SQLite-->>DB: Rows deleted
         DB-->>API: Deleted count
@@ -198,7 +198,7 @@ The database uses these pragmas for performance:
 
 ## Log Retention
 
-The service automatically deletes logs older than 30 days via a daily cleanup routine.
+The service automatically deletes logs older than 7 days via a daily cleanup routine.
 
 ## Manual Testing
 
