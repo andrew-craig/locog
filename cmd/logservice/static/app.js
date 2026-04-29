@@ -378,6 +378,9 @@ function disconnectWebSocket() {
     }
 }
 
+const WIFI_ICON = '<path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>';
+const WIFI_OFF_ICON = '<line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>';
+
 function updateStreamToggle() {
     const btn = document.getElementById('streamToggle');
     if (!btn) return;
@@ -388,15 +391,11 @@ function updateStreamToggle() {
     if (!streamingMode) {
         btn.className = 'icon-button stream-toggle';
         btn.title = 'Manual mode — click to enable live streaming';
-        icon.innerHTML = '<line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>';
-    } else if (isConnected) {
-        btn.className = 'icon-button stream-toggle stream-toggle--live';
-        btn.title = 'Live streaming — click to switch to manual mode';
-        icon.innerHTML = '<path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>';
+        icon.innerHTML = WIFI_OFF_ICON;
     } else {
-        btn.className = 'icon-button stream-toggle stream-toggle--reconnecting';
-        btn.title = 'Reconnecting… click to switch to manual mode';
-        icon.innerHTML = '<path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>';
+        btn.className = 'icon-button stream-toggle ' + (isConnected ? 'stream-toggle--live' : 'stream-toggle--reconnecting');
+        btn.title = isConnected ? 'Live streaming — click to switch to manual mode' : 'Reconnecting… click to switch to manual mode';
+        icon.innerHTML = WIFI_ICON;
     }
 }
 
@@ -431,6 +430,7 @@ function connectWebSocket() {
     };
 
     ws.onclose = function() {
+        if (ws !== this) return;
         ws = null;
         updateStreamToggle();
         if (streamingMode) {
