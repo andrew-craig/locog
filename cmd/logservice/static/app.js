@@ -288,6 +288,9 @@ function displayLogs(logs) {
                     <span class="log-timestamp">${timestamp}</span>
                     <span class="log-service">${escapeHtml(log.service)}</span>
                     <span class="log-host">${escapeHtml(log.host || '')}</span>
+                    <button type="button" class="log-toggle" aria-expanded="false" aria-label="Expand log entry" title="Expand">
+                        <i data-feather="chevron-down" class="log-toggle-icon"></i>
+                    </button>
                 </div>
                 <div class="log-message">${escapeHtml(log.message)}</div>
                 ${detailsHtml}
@@ -329,11 +332,39 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function setLogEntryExpanded(entry, expanded) {
+    entry.classList.toggle('expanded', expanded);
+
+    const toggle = entry.querySelector('.log-toggle');
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.setAttribute('aria-label', expanded ? 'Collapse log entry' : 'Expand log entry');
+        toggle.setAttribute('title', expanded ? 'Collapse' : 'Expand');
+    }
+}
+
 function attachLogClickHandlers() {
     const logEntries = document.querySelectorAll('.log-entry');
     logEntries.forEach(entry => {
+        const toggle = entry.querySelector('.log-toggle');
+        if (toggle) {
+            toggle.addEventListener('click', function(e) {
+                // Keep the entry handler below from immediately re-expanding.
+                e.stopPropagation();
+                setLogEntryExpanded(entry, !entry.classList.contains('expanded'));
+            });
+        }
+
         entry.addEventListener('click', function() {
-            this.classList.toggle('expanded');
+            // Once expanded, only the chevron collapses the entry so that its
+            // content can be selected and copied.
+            if (entry.classList.contains('expanded')) return;
+
+            // Ignore the click that finishes a text selection.
+            const selection = window.getSelection();
+            if (selection && !selection.isCollapsed) return;
+
+            setLogEntryExpanded(entry, true);
         });
     });
 }

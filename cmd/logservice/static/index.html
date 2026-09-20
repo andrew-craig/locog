@@ -365,6 +365,12 @@
             background: var(--bg-tertiary);
         }
 
+        /* Expanded entries only collapse via the chevron, so their content
+           stays selectable for copying. */
+        .log-entry.expanded {
+            cursor: auto;
+        }
+
         .log-entry.error {
             border-left-color: var(--error-border);
             background: var(--error-bg);
@@ -387,9 +393,49 @@
 
         .log-header {
             display: flex;
+            align-items: center;
             gap: 1rem;
             margin-bottom: 0.5rem;
             font-size: 0.8rem;
+        }
+
+        .log-toggle {
+            margin-left: auto;
+            flex-shrink: 0;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-tertiary);
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+        }
+
+        .log-toggle:hover,
+        .log-toggle:active {
+            background: var(--bg-tertiary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .log-toggle:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 1px;
+        }
+
+        .log-toggle-icon {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s;
+        }
+
+        .log-entry.expanded .log-toggle-icon {
+            transform: rotate(180deg);
         }
 
         .log-timestamp {
