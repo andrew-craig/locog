@@ -1,6 +1,9 @@
 let ws = null;
 let wsReconnectTimeout = null;
 let currentLogs = [];
+// Keys of the log entries the user has expanded, so that expansion survives a
+// refresh or an incoming streamed log.
+const expandedLogs = new Set();
 let streamingMode = localStorage.getItem('streamingMode') !== 'false';
 
 // Theme management
@@ -221,89 +224,163 @@ function getLogLevelIcon(level) {
     return iconMap[level.toUpperCase()] || 'alert-circle';
 }
 
+// Identifies a log entry across re-renders. Logs streamed over the WebSocket
+// have not been assigned a database id yet, so identity is derived from the
+// content instead. The timestamp is normalised to epoch milliseconds because
+// the streamed and the stored copy of a log can differ in formatting.
+function logKey(log) {
+    return [
+        new Date(log.timestamp).getTime(),
+        log.service,
+        log.level,
+        log.host || '',
+        log.message
+    ].join('\u001f');
+}
+
+function buildLogEntryHtml(log) {
+    const timestamp = new Date(log.timestamp).toLocaleString();
+    const levelClass = escapeHtml(log.level.toLowerCase());
+    const iconName = getLogLevelIcon(log.level);
+
+    let metadataHtml = '';
+    if (log.metadata && Object.keys(log.metadata).length > 0) {
+        metadataHtml = `
+            <div class="log-metadata">
+                ${escapeHtml(JSON.stringify(log.metadata, null, 2))}
+            </div>
+        `;
+    }
+
+    // Build details view with all log fields as key:value pairs
+    const detailsHtml = `
+        <div class="log-details">
+            ${log.id ? `<div class="detail-row">
+                <div class="detail-key">ID:</div>
+                <div class="detail-value">${escapeHtml(String(log.id))}</div>
+            </div>` : ''}
+            <div class="detail-row">
+                <div class="detail-key">Timestamp:</div>
+                <div class="detail-value">${timestamp}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-key">Service:</div>
+                <div class="detail-value">${escapeHtml(log.service)}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-key">Level:</div>
+                <div class="detail-value">${escapeHtml(log.level)}</div>
+            </div>
+            ${log.host ? `<div class="detail-row">
+                <div class="detail-key">Host:</div>
+                <div class="detail-value">${escapeHtml(log.host)}</div>
+            </div>` : ''}
+            <div class="detail-row">
+                <div class="detail-key">Message:</div>
+                <div class="detail-value">${escapeHtml(log.message)}</div>
+            </div>
+            ${log.metadata && Object.keys(log.metadata).length > 0 ? `<div class="detail-row">
+                <div class="detail-key">Metadata:</div>
+                <div class="detail-value metadata">${escapeHtml(JSON.stringify(log.metadata, null, 2))}</div>
+            </div>` : ''}
+            ${log.created_at ? `<div class="detail-row">
+                <div class="detail-key">Created At:</div>
+                <div class="detail-value">${new Date(log.created_at).toISOString()}</div>
+            </div>` : ''}
+        </div>
+    `;
+
+    return `
+        <div class="log-entry ${levelClass}">
+            <div class="log-header">
+                <i data-feather="${iconName}" class="log-level-icon ${escapeHtml(log.level)}"></i>
+                <span class="log-timestamp">${timestamp}</span>
+                <span class="log-service">${escapeHtml(log.service)}</span>
+                <span class="log-host">${escapeHtml(log.host || '')}</span>
+                <button type="button" class="log-toggle" aria-expanded="false" aria-label="Expand log entry" title="Expand">
+                    <i data-feather="chevron-down" class="log-toggle-icon"></i>
+                </button>
+            </div>
+            <div class="log-message">${escapeHtml(log.message)}</div>
+            ${detailsHtml}
+            ${metadataHtml}
+        </div>
+    `;
+}
+
+function createLogEntry(log, key) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = buildLogEntryHtml(log).trim();
+
+    const entry = wrapper.firstElementChild;
+    entry.dataset.key = key;
+    attachLogEntryHandlers(entry);
+
+    if (expandedLogs.has(key)) {
+        setLogEntryExpanded(entry, true);
+    }
+
+    return entry;
+}
+
 function displayLogs(logs) {
     const container = document.getElementById('logsContainer');
+    const entries = logs || [];
+    const keys = entries.map(logKey);
 
-    if (!logs || logs.length === 0) {
+    // Forget entries that are no longer in the result set, so the set of
+    // expanded keys cannot grow without bound.
+    const visibleKeys = new Set(keys);
+    expandedLogs.forEach(key => {
+        if (!visibleKeys.has(key)) {
+            expandedLogs.delete(key);
+        }
+    });
+
+    if (entries.length === 0) {
         container.innerHTML = '<div class="loading">No logs found</div>';
         return;
     }
 
-    container.innerHTML = logs.map((log, index) => {
-        const timestamp = new Date(log.timestamp).toLocaleString();
-        const levelClass = escapeHtml(log.level.toLowerCase());
-        const iconName = getLogLevelIcon(log.level);
+    // Reuse the nodes of logs that are already on screen instead of rebuilding
+    // the list. Re-rendering everything would collapse expanded entries and
+    // drop the user's text selection every time a streamed log arrives.
+    const reusable = new Map();
+    container.querySelectorAll('.log-entry').forEach(entry => {
+        reusable.set(entry.dataset.key, entry);
+    });
 
-        let metadataHtml = '';
-        if (log.metadata && Object.keys(log.metadata).length > 0) {
-            metadataHtml = `
-                <div class="log-metadata">
-                    ${escapeHtml(JSON.stringify(log.metadata, null, 2))}
-                </div>
-            `;
+    const nodes = entries.map((log, index) => {
+        const key = keys[index];
+        const existing = reusable.get(key);
+        if (existing) {
+            reusable.delete(key);
+            return existing;
         }
+        return createLogEntry(log, key);
+    });
 
-        // Build details view with all log fields as key:value pairs
-        const detailsHtml = `
-            <div class="log-details">
-                ${log.id ? `<div class="detail-row">
-                    <div class="detail-key">ID:</div>
-                    <div class="detail-value">${escapeHtml(String(log.id))}</div>
-                </div>` : ''}
-                <div class="detail-row">
-                    <div class="detail-key">Timestamp:</div>
-                    <div class="detail-value">${timestamp}</div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-key">Service:</div>
-                    <div class="detail-value">${escapeHtml(log.service)}</div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-key">Level:</div>
-                    <div class="detail-value">${escapeHtml(log.level)}</div>
-                </div>
-                ${log.host ? `<div class="detail-row">
-                    <div class="detail-key">Host:</div>
-                    <div class="detail-value">${escapeHtml(log.host)}</div>
-                </div>` : ''}
-                <div class="detail-row">
-                    <div class="detail-key">Message:</div>
-                    <div class="detail-value">${escapeHtml(log.message)}</div>
-                </div>
-                ${log.metadata && Object.keys(log.metadata).length > 0 ? `<div class="detail-row">
-                    <div class="detail-key">Metadata:</div>
-                    <div class="detail-value metadata">${escapeHtml(JSON.stringify(log.metadata, null, 2))}</div>
-                </div>` : ''}
-                ${log.created_at ? `<div class="detail-row">
-                    <div class="detail-key">Created At:</div>
-                    <div class="detail-value">${new Date(log.created_at).toISOString()}</div>
-                </div>` : ''}
-            </div>
-        `;
+    reusable.forEach(entry => entry.remove());
 
-        return `
-            <div class="log-entry ${levelClass}" data-index="${index}">
-                <div class="log-header">
-                    <i data-feather="${iconName}" class="log-level-icon ${escapeHtml(log.level)}"></i>
-                    <span class="log-timestamp">${timestamp}</span>
-                    <span class="log-service">${escapeHtml(log.service)}</span>
-                    <span class="log-host">${escapeHtml(log.host || '')}</span>
-                    <button type="button" class="log-toggle" aria-expanded="false" aria-label="Expand log entry" title="Expand">
-                        <i data-feather="chevron-down" class="log-toggle-icon"></i>
-                    </button>
-                </div>
-                <div class="log-message">${escapeHtml(log.message)}</div>
-                ${detailsHtml}
-                ${metadataHtml}
-            </div>
-        `;
-    }).join('');
+    // Place the nodes in order, leaving those already in position untouched.
+    let cursor = container.firstChild;
+    nodes.forEach(node => {
+        if (node === cursor) {
+            cursor = cursor.nextSibling;
+        } else {
+            container.insertBefore(node, cursor);
+        }
+    });
+
+    // Drop anything left over, such as a previous "No logs found" placeholder.
+    while (cursor) {
+        const next = cursor.nextSibling;
+        cursor.remove();
+        cursor = next;
+    }
 
     // Replace feather icon placeholders with SVG
     feather.replace();
-
-    // Add click handlers to toggle expansion
-    attachLogClickHandlers();
 }
 
 function showWarningBanner(message) {
@@ -335,6 +412,12 @@ function escapeHtml(text) {
 function setLogEntryExpanded(entry, expanded) {
     entry.classList.toggle('expanded', expanded);
 
+    if (expanded) {
+        expandedLogs.add(entry.dataset.key);
+    } else {
+        expandedLogs.delete(entry.dataset.key);
+    }
+
     const toggle = entry.querySelector('.log-toggle');
     if (toggle) {
         toggle.setAttribute('aria-expanded', String(expanded));
@@ -343,29 +426,26 @@ function setLogEntryExpanded(entry, expanded) {
     }
 }
 
-function attachLogClickHandlers() {
-    const logEntries = document.querySelectorAll('.log-entry');
-    logEntries.forEach(entry => {
-        const toggle = entry.querySelector('.log-toggle');
-        if (toggle) {
-            toggle.addEventListener('click', function(e) {
-                // Keep the entry handler below from immediately re-expanding.
-                e.stopPropagation();
-                setLogEntryExpanded(entry, !entry.classList.contains('expanded'));
-            });
-        }
-
-        entry.addEventListener('click', function() {
-            // Once expanded, only the chevron collapses the entry so that its
-            // content can be selected and copied.
-            if (entry.classList.contains('expanded')) return;
-
-            // Ignore the click that finishes a text selection.
-            const selection = window.getSelection();
-            if (selection && !selection.isCollapsed) return;
-
-            setLogEntryExpanded(entry, true);
+function attachLogEntryHandlers(entry) {
+    const toggle = entry.querySelector('.log-toggle');
+    if (toggle) {
+        toggle.addEventListener('click', function(e) {
+            // Keep the entry handler below from immediately re-expanding.
+            e.stopPropagation();
+            setLogEntryExpanded(entry, !entry.classList.contains('expanded'));
         });
+    }
+
+    entry.addEventListener('click', function() {
+        // Once expanded, only the chevron collapses the entry so that its
+        // content can be selected and copied.
+        if (entry.classList.contains('expanded')) return;
+
+        // Ignore the click that finishes a text selection.
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) return;
+
+        setLogEntryExpanded(entry, true);
     });
 }
 
