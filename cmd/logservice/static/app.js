@@ -224,12 +224,19 @@ function getLogLevelIcon(level) {
     return iconMap[level.toUpperCase()] || 'alert-circle';
 }
 
-// Identifies a log entry across re-renders. Logs streamed over the WebSocket
-// have not been assigned a database id yet, so identity is derived from the
-// content instead. The timestamp is normalised to epoch milliseconds because
-// the streamed and the stored copy of a log can differ in formatting.
+// Identifies a log entry across re-renders. A stored log is identified by its
+// database id. A log streamed over the WebSocket has not been read back from
+// the database yet and carries no id, so it falls back to its content until a
+// query replaces it with the stored copy.
 function logKey(log) {
+    return log.id ? 'id\u001f' + log.id : logContentKey(log);
+}
+
+// The timestamp is normalised to epoch milliseconds because the streamed and
+// the stored copy of a log can differ in formatting.
+function logContentKey(log) {
     return [
+        'content',
         new Date(log.timestamp).getTime(),
         log.service,
         log.level,
@@ -327,6 +334,15 @@ function displayLogs(logs) {
     const container = document.getElementById('logsContainer');
     const entries = logs || [];
     const keys = entries.map(logKey);
+
+    // A streamed log is keyed by its content until the stored copy arrives
+    // with an id, which also rebuilds its node so the details pick up the id
+    // and creation time. Carry any expansion across that switch.
+    entries.forEach((log, index) => {
+        if (log.id && expandedLogs.delete(logContentKey(log))) {
+            expandedLogs.add(keys[index]);
+        }
+    });
 
     // Forget entries that are no longer in the result set, so the set of
     // expanded keys cannot grow without bound.
