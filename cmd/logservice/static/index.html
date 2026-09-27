@@ -432,11 +432,23 @@
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
             border-radius: 2px;
-            box-shadow: inset 3px 0 0 var(--border-strong);
+            overflow: hidden;
             font-size: 0.8125rem;
             cursor: pointer;
             position: relative;
             transition: border-color 0.15s, background-color 0.15s;
+        }
+
+        /* Level accent: a square-ended strip clipped by the card's rounded
+           corners, rather than a border that would follow the radius. */
+        .log-entry::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 2px;
+            background: var(--border-strong);
         }
 
         .log-entry:hover {
@@ -451,23 +463,35 @@
         }
 
         .log-entry.error {
-            box-shadow: inset 3px 0 0 var(--error-border);
             background: var(--error-bg);
         }
 
+        .log-entry.error::before {
+            background: var(--error-border);
+        }
+
         .log-entry.warn {
-            box-shadow: inset 3px 0 0 var(--warn-border);
             background: var(--warn-bg);
         }
 
+        .log-entry.warn::before {
+            background: var(--warn-border);
+        }
+
         .log-entry.info {
-            box-shadow: inset 3px 0 0 var(--info-border);
             background: var(--info-bg);
         }
 
+        .log-entry.info::before {
+            background: var(--info-border);
+        }
+
         .log-entry.debug {
-            box-shadow: inset 3px 0 0 var(--debug-border);
             background: var(--debug-bg);
+        }
+
+        .log-entry.debug::before {
+            background: var(--debug-border);
         }
 
         .log-header {
